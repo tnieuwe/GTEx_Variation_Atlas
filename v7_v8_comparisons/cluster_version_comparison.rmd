@@ -1,0 +1,353 @@
+---
+title: "Quick muscle test"
+author: "Tim Nieuwenhuis"
+date: "3/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(tidyverse)
+library(ggforce)
+library(viridis)
+library(RColorBrewer)
+```
+
+```{r}
+load("~/Halushka Lab/Matrisome/Matrisome_GTEx_analysis_final/Setup Code/output/gtex-gene-counts-v8.rda")
+pheno_dat <- read.csv("~/Halushka Lab/Matrisome/Matrisome_GTEx_analysis_final/global_in/gtex_phenotypes_v8.csv")
+
+short_gtex_vect2vect <- function(x){
+  #If else statement used to determine if the name is long or short, if already short nothing should happen, if long, then it will be appropriately shortened. This code works off the assumption that the gtex IDs are either 4 or 5 characters in length
+
+    
+    #Generating stand in list
+    shortname <- vector()
+    #Used subset to create a vector, drop needed to be true to make the tibble output a vector
+    for (k in x) {
+      #If else for 5 or 4 length IDs
+      #Using the "-" to determine if the id has 4 or 5 characters
+      if(substr(k, start = 10, stop = 10) == "-"){
+        #4 length
+        m <- substr(k, 1, 9)
+        shortname <- c(shortname, m)
+      } else{
+        #5 length
+        m <- substr(k, 1, 10)
+        
+        shortname <- c(shortname, m)
+        
+      }
+      
+    }
+ 
+  return(shortname)
+}
+```
+
+Starter comparison between adipose samples
+```{r}
+res_v7 <- read.csv("~/Halushka Lab/GTEx_variation/variation_tools/gtex_variation_toolbox/v7_output_data/adipose_subcutaneous-gene-clusters-high-variance.csv")
+
+res_v8 <- read.csv("~/Halushka Lab/GTEx_variation/variation_tools/gtex_variation_toolbox/v8_output_data/adipose_subcutaneous-gene-clusters-high-variance.csv")
+
+tissue = "adipose_subcutaneous"
+## Need to collapse sub clusters into a single cluster
+i <- 1
+new_res_v8 <- NULL
+while (i <= ncol(res_v8)) {
+    ## When there is a column with a [.] combine it with the following column
+    sub_clust_bool <- str_detect(colnames(res_v8)[i],pattern = "[.]")
+    if (sub_clust_bool == FALSE) {
+        new_res_v8 <- as.data.frame(cbind(new_res_v8, res_v8[,i]))
+        colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+        i <- i + 1
+         next
+    }
+    joined_col <- c(res_v8[,i], res_v8[,i + 1])
+    joined_col <- joined_col[joined_col != ""]
+    
+    row_diff <- nrow(new_res_v8)  - length(joined_col)
+    if (row_diff == 0) {
+        new_res_v8 <- as.data.frame(cbind(new_res_v8, joined_col))
+        colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+        i <- i + 2
+    } else if (row_diff > 0){
+        joined_col <- append(joined_col, rep("", row_diff))
+        new_res_v8 <- as.data.frame(cbind(new_res_v8, joined_col))
+        colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+        i <- i + 2
+    } else {
+        abs_diff <- abs(row_diff)
+        empt_matrix <- matrix(data = "", nrow =abs_diff, ncol = ncol(new_res_v8))
+        colnames(empt_matrix) <- colnames(new_res_v8)
+        new_res_v8 <- as.data.frame(rbind(new_res_v8, empt_matrix))
+        new_res_v8 <- as.data.frame(cbind(new_res_v8, joined_col))
+        colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+        i <- i + 2
+    }
+    ## Use ind + 1 to skip to the next column?
+}
+res_v7
+new_res_v8
+```
+
+Understand the overlap:
+We need to see what columns have the most overlap and then order them or at least connect them somehow or long format
+
+Long format:
+Col 1 is tissue
+Col 2 is cluster letter
+Col 3 is how many genes it has
+Col 5 is how many genes are shared
+Col 6 prominent old cluster that shares those genes
+Col 7 is how many genes in that specific old cluster are shared
+
+
+```{r}
+comparison_table <- NULL
+for (col in seq(ncol(new_res_v8))) {
+  vect_col <- new_res_v8[,col]
+  new_cluster <- colnames(new_res_v8)[col]
+  n_genes_clust <- length(vect_col)
+  vect_col <- vect_col[vect_col != ""]
+  n_genes_clust <- length(vect_col)
+  all_old_clusters <- colSums(
+      apply(res_v7,
+            MARGIN = 2,
+            FUN = function(x){vect_col %in% x}))
+  top_old_clust <- all_old_clusters[order(all_old_clusters, decreasing = T)][1]
+  all_overlap_genes <- sum(all_old_clusters)
+  new_row <- c(tissue,
+                new_cluster,
+                n_genes_clust,
+                all_overlap_genes,
+                names(top_old_clust),
+                unname(top_old_clust)
+                )
+  comparison_table <- rbind(comparison_table, new_row)
+  }
+
+```
+
+Run all tissue analysis
+```{r}
+tiss_list <- read.csv("~/Halushka Lab/Matrisome/Matrisome_GTEx_analysis_final/GTEx_age_sex_analysis/input/general_list_test_clean.txt")
+comparison_table_v8 <- NULL
+comparison_table_v7 <- NULL
+for (tissue in tiss_list[,1]) {
+    if (startsWith(tissue, "cells_cultured_fi")|
+        startsWith(tissue, "colon_tr")|
+        startsWith(tissue, "test")) {
+        next
+    }
+    new_path <- paste0("~/Halushka Lab/GTEx_variation/variation_tools/gtex_variation_toolbox/v8_output_data/",
+                       tissue,
+                       "-gene-clusters-high-variance.csv")
+    old_path <- paste0("~/Halushka Lab/GTEx_variation/variation_tools/gtex_variation_toolbox/v7_output_data/",
+                       tissue,
+                       "-gene-clusters-high-variance.csv")
+    
+    ##First loop to fix v8 to be like v7
+    res_v8 <- read.csv(new_path)
+    res_v7 <- read.csv(old_path)
+    
+    i <- 1
+    new_res_v8 <- NULL
+    while (i <= ncol(res_v8)) {
+        ## When there is a column with a [.] combine it with the following column
+        sub_clust_bool <- str_detect(colnames(res_v8)[i],pattern = "[.]")
+        if (sub_clust_bool == FALSE) {
+            new_res_v8 <- as.data.frame(cbind(new_res_v8, res_v8[,i]))
+            colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+            i <- i + 1
+             next
+        }
+        joined_col <- c(res_v8[,i], res_v8[,i + 1])
+        joined_col <- joined_col[joined_col != ""]
+        
+        row_diff <- nrow(new_res_v8)  - length(joined_col)
+        if (row_diff == 0) {
+            new_res_v8 <- as.data.frame(cbind(new_res_v8, joined_col))
+            colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+            i <- i + 2
+        } else if (row_diff > 0){
+            joined_col <- append(joined_col, rep("", row_diff))
+            new_res_v8 <- as.data.frame(cbind(new_res_v8, joined_col))
+            colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+            i <- i + 2
+        } else {
+            abs_diff <- abs(row_diff)
+            empt_matrix <- matrix(data = "", nrow =abs_diff, ncol = ncol(new_res_v8))
+            colnames(empt_matrix) <- colnames(new_res_v8)
+            new_res_v8 <- as.data.frame(rbind(new_res_v8, empt_matrix))
+            new_res_v8 <- as.data.frame(cbind(new_res_v8, joined_col))
+            colnames(new_res_v8)[ncol(new_res_v8)] <- str_sub(colnames(res_v8)[i],start = 1, end = 1)
+            i <- i + 2
+        }
+        ## Use ind + 1 to skip to the next column?
+    }
+    
+    
+        for (col in seq(ncol(res_v7))) {
+        vect_col <- res_v7[,col]
+        new_cluster <- colnames(res_v7)[col]
+        n_genes_clust <- length(vect_col)
+        vect_col <- vect_col[vect_col != ""]
+        n_genes_clust <- length(vect_col)
+        all_old_clusters <- colSums(
+          apply(new_res_v8,
+                MARGIN = 2,
+                FUN = function(x){vect_col %in% x}))
+        top_old_clust <- all_old_clusters[order(all_old_clusters, decreasing = T)][1]
+        all_overlap_genes <- sum(all_old_clusters)
+        new_row <- c(tissue,
+                    new_cluster,
+                    n_genes_clust,
+                    all_overlap_genes,
+                    names(top_old_clust),
+                    unname(top_old_clust)
+                    )
+        comparison_table_v7 <- rbind(comparison_table_v7, new_row)
+        }
+    
+        for (col in seq(ncol(new_res_v8))) {
+        vect_col <- new_res_v8[,col]
+        new_cluster <- colnames(new_res_v8)[col]
+        n_genes_clust <- length(vect_col)
+        vect_col <- vect_col[vect_col != ""]
+        n_genes_clust <- length(vect_col)
+        all_old_clusters <- colSums(
+          apply(res_v7,
+                MARGIN = 2,
+                FUN = function(x){vect_col %in% x}))
+        top_old_clust <- all_old_clusters[order(all_old_clusters, decreasing = T)][1]
+        all_overlap_genes <- sum(all_old_clusters)
+        new_row <- c(tissue,
+                    new_cluster,
+                    n_genes_clust,
+                    all_overlap_genes,
+                    names(top_old_clust),
+                    unname(top_old_clust)
+                    )
+        comparison_table_v8 <- rbind(comparison_table_v8, new_row)
+        }
+    
+    }
+
+comparison_table <- as_tibble(comparison_table)
+
+# Long format:
+# Col 1 is tissue
+# Col 2 is cluster letter
+# Col 3 is how many genes it has
+# Col 5 is how many genes are shared
+# Col 6 prominent old cluster that shares those genes
+# Col 7 is how many genes in that specific old cluster are shared
+
+
+comparison_table_v8 <- comparison_table_v8 %>% as_tibble() %>% mutate(V3 = as.numeric(V3),
+                           V4 = as.numeric(V4),
+                           V6 = as.numeric(V6))
+
+comparison_table_v7 <- comparison_table_v7 %>% as_tibble() %>% mutate(V3 = as.numeric(V3),
+                           V4 = as.numeric(V4),
+                           V6 = as.numeric(V6))
+
+colnames(comparison_table_v8) <- c("tissue",
+                                "v8_cluster",
+                                "n_v8_genes",
+                                "shared_v8_v7",
+                                "match_v7_clust",
+                                "match_v7_genes"
+                                )
+
+colnames(comparison_table_v7) <- c("tissue",
+                                "v7_cluster",
+                                "n_v7_genes",
+                                "shared_v7_v8",
+                                "match_v8_clust",
+                                "match_v8_genes"
+                                )
+
+
+
+
+```
+
+
+Plots: version_difference clusters per tissue 
+Plots: version_difference genes per tissue
+```{r}
+## Genes in v7 or v8 and not in the other
+comparison_table_v8 <- comparison_table_v8 %>% mutate(missing_in_v7 = n_v8_genes - shared_v8_v7,
+                                                      analysis = "v8")
+comparison_table_v7 <- comparison_table_v7 %>% mutate(missing_in_v8 = n_v7_genes - shared_v7_v8,
+                                                      analysis = "v7")
+
+summaried_v8 <- comparison_table_v8 %>%
+    group_by(tissue) %>%
+    summarise(unique_genes = sum(missing_in_v7),
+              n_clust = n()) %>%
+    mutate(analysis = "v8")
+
+summaried_v8_nx <- comparison_table_v8 %>%
+    group_by(tissue) %>%
+    filter(v8_cluster != "X") %>%
+    summarise(unique_genes = sum(missing_in_v7),
+              n_clust = n()) %>%
+    mutate(analysis = "v8")
+
+
+summaried_v7 <- comparison_table_v7 %>%
+    group_by(tissue) %>%
+    summarise(unique_genes = sum(missing_in_v8),
+              n_clust = n()) %>%
+    mutate(analysis = "v7")
+
+summaried_v7_nx <- comparison_table_v7 %>%
+    group_by(tissue) %>%
+    filter(v7_cluster != "X") %>%
+    summarise(unique_genes = sum(missing_in_v8),
+              n_clust = n()) %>%
+    mutate(analysis = "v7")
+
+summaried_dat <- rbind(summaried_v8,summaried_v7)
+summaried_dat_nx <- rbind(summaried_v8_nx,summaried_v7_nx)
+
+
+ggplot(summaried_dat, aes(y= tissue, x = n_clust, fill = analysis)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_viridis(discrete=TRUE) +
+    labs(title = "Number of clusters per tissue across analyses") +
+    xlab("Number of clusters") +
+    ylab("Tissues") +
+    theme_classic()
+ggsave(filename = "output/cluster_n_version_comparison.pdf", height = 7.5)
+
+
+ggplot(summaried_dat, aes(y= tissue, x = unique_genes, fill = analysis)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_viridis(discrete=TRUE) +
+    labs(title = "N of genes not shared between analyses") +
+    xlab("Genes Unique to Analysis") +
+    ylab("Tissues") +
+    theme_classic()
+ggsave(filename = "output/gene_unique_to_analysis.pdf", height = 7.5)
+
+
+ggplot(summaried_dat_nx, aes(y= tissue, x = unique_genes, fill = analysis)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_viridis(discrete=TRUE) +
+   # scale_color_discrete( brewer.pal(7, "BrBG"), guide = FALSE) +
+    labs(title = "N of genes not shared between analyses",
+         subtitle = "No X cluster") +
+    xlab("Genes Unique to Analysis") +
+    ylab("Tissues") +
+    theme_classic()
+ggsave(filename = "output/gene_unique_to_analysis_no_x.pdf", height = 7.5)
+
+
+```
+
