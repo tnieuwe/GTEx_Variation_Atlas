@@ -44,15 +44,19 @@ ncol(dat) == sum(stab$SAMPID == colnames(dat))
 save(dat, gtab, stab, file = "output/gtex-gene-counts-v8.rda")
 ```
 
-Generate rda files used for the colon individual selector
+Generate rda files used for pca checking
 ```{r}
 load("output/gtex-gene-counts-v8.rda")
-tissue_list = c("colon_transverse", "adipose_subcutaneous",	"adipose_visceral__omentum",
-                     "colon_sigmoid")
-tissue_names = c("Colon - Transverse", "Adipose - Subcutaneous",
-                 "Adipose - Visceral (Omentum)", "Colon - Sigmoid")
+tissue_list = c("lung", "artery_coronary",	"kidney_cortex",
+                     "skin_sun_exposed", "prostate")
+tissue_names = c("Lung", "Artery - Coronary",
+                 "Kidney - Cortex", "Skin - Sun Exposed (Lower leg)", "Prostate")
 
-for (j in seq(4)) {
+tissue_list = c(
+                     "skin_sun_exposed", "prostate")
+tissue_names = c( "Skin - Sun Exposed (Lower leg)", "Prostate")
+
+for (j in seq(length(tissue_list))) {
     cur_tiss <- tissue_list[j]
     cur_name <- tissue_names[j]
     
@@ -65,7 +69,7 @@ for (j in seq(4)) {
                                colData = filt_stab,
                                design = ~ 1)
     ## We used varianceStabilizingTransformation() but use vst to save time
-    vst_dat <- vst(des_dat)
+    vst_dat <- DESeq2::varianceStabilizingTransformation(des_dat)
     m <- rowMeans(assay(vst_dat))
     ## select clearly expressed genes
     ind <- which(m>5)
