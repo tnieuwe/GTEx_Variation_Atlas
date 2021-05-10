@@ -1,0 +1,205 @@
+---
+title: "PCA variance comparisons"
+author: "Tim Nieuwenhuis"
+date: "4/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(broom)
+library(reshape2)
+```
+
+
+For create pipeline for a single tissue
+Goals:
+1. Load in tissue
+2. Normalize tissue
+3. Filter tissue
+4. Apply different variance filters
+5. PCA the different filtered data
+6. See how well across samples PC1-3 correlate (ggplot seems easy)
+
+ Goals 1-3 are completed in set_up_code.rmd
+
+Working on a single tissue
+
+Goal 4
+```{r}
+load("../../Setup Code/output/lung-vsd-mean-filtered.rda")
+
+var_list = list()
+for (cur_var in seq(from = 1, to = 2, by = .25)) {
+    temp_list = list()
+    var_ind <- apply(assay(generalVSDMeanFiltered), MARGIN = 1, FUN = var) >= cur_var
+    var_gtab <- gtabMeanFiltered[var_ind,]
+    var_dat <- assay(generalVSDMeanFiltered)[var_ind,]
+    rownames(var_dat) <- var_gtab$gene_name
+    temp_list$dat <- var_dat
+    temp_list$gtab <- var_gtab
+    var_list[[paste0("variance_", cur_var)]] <- temp_list
+}
+
+
+```
+
+Learning how to do goal 5
+```{r}
+## Run principle component on a vary and get for var 1-3 how much each samples
+## associated
+
+pc_out <- prcomp(t(var_list$variance_1$dat), scale = T)
+tidyv_var_exp <- pc_out  %>%
+      tidy(matrix = "eigenvalues") %>%
+    slice_head(n = 3)
+top_pcs <- pc_out$x[,1:3]
+
+#plot(pc_out$x[,1], pc_out$x[,2])
+#autoplot(pc_out)
+
+
+pc_all_out <- lapply(var_list, FUN = function(x){
+        pc_out <- prcomp(t(x$dat), scale = T)
+        tidyv_var_exp <- pc_out  %>%
+              tidy(matrix = "eigenvalues") %>%
+            slice_head(n = 3)
+        top_pcs <- pc_out$x[,1:3]
+        pc_list <- list()
+        pc_list[["per_exp"]] <- tidyv_var_exp
+        pc_list[["sample_vals"]] <- top_pcs
+        pc_list
+})
+
+final_samples = NULL
+for (i in seq(length(pc_all_out))) {
+    temp_frame <- pc_all_out[[i]][[2]]
+    colnames(temp_frame) <- paste0(colnames(temp_frame), "_var_",
+                                   str_replace(names(pc_all_out)[i], "variance_", ""))
+    final_samples <- cbind(final_samples, temp_frame)
+}
+
+pcs_names <- c("PC1", "PC2", "PC3")
+
+cor_mat_list <- list()
+for (cur_pc in pcs_names) {
+    cur_ind <- startsWith(colnames(final_samples), cur_pc)
+    pre_corr <- final_samples[,cur_ind]
+    cor_mat <- cor(pre_corr)
+    cor_mat <- as.data.frame(cor_mat) %>%
+                rownames_to_column("first_pc") %>%
+                melt() 
+    cor_mat_list[[cur_pc]] <- cor_mat
+}
+
+ cor_mat_list[[cur_pc]]
+
+ 
+ ggplot(cor_mat_list[["PC1"]], aes_string(x = "variable", y = "value")) +
+     geom_col() +
+     facet_grid(first_pc ~ .) +
+     coord_flip() +
+     labs(title = "Lung PC comparisons across variance thresholds")+
+     ylab("Pearson Correlation Value") +
+     xlab("The compared principle component") +
+     theme_bw()
+ 
+```
+
+```{r}
+final_plots <- list()
+final_pcs <- list()
+tissue_list = c("lung", "artery_coronary",	"kidney_cortex",
+                     "skin_sun_exposed", "prostate")
+for (tissue in tissue_list) {
+    load(paste0("../../Setup Code/output/",tissue,"-vsd-mean-filtered.rda"))
+
+    var_list = list()
+    for (cur_var in seq(4)) {
+        temp_list = list()
+        var_ind <- apply(assay(generalVSDMeanFiltered), MARGIN = 1, FUN = var) >= cur_var
+        var_gtab <- gtabMeanFiltered[var_ind,]
+        var_dat <- assay(generalVSDMeanFiltered)[var_ind,]
+        rownames(var_dat) <- var_gtab$gene_name
+        temp_list$dat <- var_dat
+        temp_list$gtab <- var_gtab
+        var_list[[paste0("variance_", cur_var)]] <- temp_list
+    }
+    
+    pc_out <- prcomp(t(var_list$variance_1$dat), scale = T)
+    tidyv_var_exp <- pc_out  %>%
+          tidy(matrix = "eigenvalues") %>%
+        slice_head(n = 3)
+    top_pcs <- pc_out$x[,1:3]
+    
+    #plot(pc_out$x[,1], pc_out$x[,2])
+    #autoplot(pc_out)
+    
+    
+    pc_all_out <- lapply(var_list, FUN = function(x){
+            pc_out <- prcomp(t(x$dat), scale = T)
+            tidyv_var_exp <- pc_out  %>%
+                  tidy(matrix = "eigenvalues") %>%
+                slice_head(n = 3)
+            top_pcs <- pc_out$x[,1:3]
+            pc_list <- list()
+            pc_list[["per_exp"]] <- tidyv_var_exp
+            pc_list[["sample_vals"]] <- top_pcs
+            pc_list
+    })
+
+    final_samples = NULL
+    for (i in seq(length(pc_all_out))) {
+        temp_frame <- pc_all_out[[i]][[2]]
+        colnames(temp_frame) <- paste0(colnames(temp_frame), "_var_", i)
+        final_samples <- cbind(final_samples, temp_frame)
+    }
+    
+    pcs_names <- c("PC1", "PC2", "PC3")
+    
+    final_pcs[[tissue]] <- final_samples
+    
+    
+    cor_mat_list <- list()
+    for (cur_pc in pcs_names) {
+        cur_ind <- startsWith(colnames(final_samples), cur_pc)
+        pre_corr <- final_samples[,cur_ind]
+        cor_mat <- cor(pre_corr)
+        cor_mat <- abs(cor_mat)
+        cor_mat <- as.data.frame(cor_mat) %>%
+                    rownames_to_column("first_pc") %>%
+                    melt() 
+        cor_mat_list[[cur_pc]] <- cor_mat
+    }
+    
+     cor_mat_list[[cur_pc]]
+    
+     
+     
+    plt <- ggplot(cor_mat_list[["PC1"]], aes_string(x = "variable", y = "value")) +
+         geom_col() +
+         facet_grid(first_pc ~ .) +
+         coord_flip() +
+         labs(title = paste0(tissue," PC comparisons across variance thresholds"))+
+         ylab("Pearson Correlation Value") +
+         xlab("The compared principle component") +
+         theme_bw()
+    final_plots[[tissue]] <- plt
+    
+}
+
+pdf("plot_out/pc1_five_tissues_abs.pdf")
+print(final_plots)
+dev.off()
+```
+
+```{r}
+cor.test(final_pcs$skin_sun_exposed[,"PC1_var_3"], final_pcs$skin_sun_exposed[,'PC3_var_2'])
+cor.test(final_pcs$lung[,"PC1_var_1"], final_pcs$lung[,'PC2_var_2'])
+```
+
