@@ -1,7 +1,7 @@
 ## Generic functions used throughout the project
 
 
-sampids <- stab$SAMPID
+#sampids <- stab$SAMPID
 
 GTEx_SAMPID_to_SUBJIUD <- function(sampids){
     ## A simple function to quickly turn SAMPIDs into SUBJIDs to connect
