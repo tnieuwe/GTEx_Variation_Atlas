@@ -12,13 +12,212 @@ library(DESeq2)
 library(broom)
 library(tidyverse)
 ```
+
+Select data usomg var options
+```{r}
+## Select variant
+cur_var <- 2.5
+```
+
+
 Load data
 ```{r}
-load("data_in/lung_vst.rda")
-lung_clusts <- read.csv("../../../GTEx_variation/v8_output/lung-gene-clusters-high-variance.csv")
-lung_profiles <- read.csv("../../../GTEx_variation/v8_output/lung-cluster-profiles.csv")
+paste0("data_in/lung_vst_var_",cur_var,".rda")
+#load("data_out/lung_vst")
+load(paste0("data_in/lung_vst_var_",cur_var,".rda"))
+lung_clusts <-  read.csv(paste0("data_out/lung-gene-clusters-",cur_var,"-variance.csv"))
+lung_profiles <- read.csv(paste0("data_out/lung-cluster-profiles-",cur_var,"-var.csv"))
 n_of_clusts <- ncol(lung_clusts) - 1
 ```
+
+Load Functions
+```{r}
+
+join_cogaps_gene_dat <- function(cogaps_obj, gtab){
+    ## Bring together cogaps data an gtab
+    gene_patterns <- as.data.frame(getAmplitudeMatrix(cogaps_obj)) %>%
+        rownames_to_column(var = "gene_id")
+    joined_patterns <- left_join(gene_patterns, gtab) %>%
+        select(gene_id, gene_name, everything())
+    return(joined_patterns)
+}
+
+join_cogaps_samp_dat <- function(cogaps_obj, df_profiles){
+    sample_patterns_cogaps <- as.data.frame(CoGAPS::getPatternMatrix(cogaps_obj)) %>%
+            rownames_to_column(var = "SAMPID")
+    sample_patterns_classic <- as.data.frame(df_profiles) %>% rename(SAMPID = "X")
+
+    joined_samp <- left_join(sample_patterns_cogaps, sample_patterns_classic)
+    return(joined_samp)
+}
+
+cogaps_quicK_check <- function(dat, col_1, col_2, plot = FALSE, cor_test = "kendall"){
+    ## Quickly finds correlation between data
+    test <- cor.test(dat[[col_1]], dat[[col_2]], method = cor_test)    
+    tidy_res <- tidy(test)
+    tidy_res
+    if (plot == TRUE) {
+    plt <-  ggplot(dat,  aes_string(x= col_1, y = col_2)) +
+            geom_point() +
+            labs(title = paste0(col_1, " compared to ", col_2),
+                 subtitle = paste0("P-value is ", format.pval(tidy_res$p.value))) +
+            theme_classic()
+    return(plt)
+    }
+    return(tidy_res)
+}
+
+
+top_cogaps_genes <- function(dat, pattern_n, n_genes = 10, top_o_bot = "top"){
+    if (top_o_bot == "top") {
+        pattern <- sym(paste0("Pattern_",pattern_n))
+        dat <- dat %>%
+            arrange(desc({{pattern }} ))
+    } else {
+    pattern <- sym(paste0("Pattern_",pattern_n))
+    dat <- dat %>%
+        arrange({{pattern }})
+    }
+    
+    dat <- dat %>% select(gene_id, gene_name, pattern)
+    
+    if (n_genes == "all") {
+        return(dat)
+    }
+    
+    return(head(dat, n_genes))
+    
+}
+
+matched_prof_pattern_plots <- function(joined_samps,
+                                       cluster_gaps_sum_out,
+                                       all_comparisons = TRUE,
+                                       sig_plots = TRUE){
+    plot_list <- list()
+    df_out <- NULL
+    ## Check last possible cluster
+    ## Move down dataframe until all clusters have at least one selected top hit
+    alphanum_clusters <- colnames(joined_samps)[!startsWith(colnames(joined_samps), "Pa") &
+                                   !startsWith(colnames(joined_samps), "SA")]
+    
+    ## Make table of results via rbind
+    for (cur_row in seq(nrow(cluster_gaps_sum_out))) {
+        cur_row_full <- cluster_gaps_sum_out[cur_row,]
+        
+        new_row <- cogaps_quicK_check(joined_samps, cur_row_full[[1]],
+                                      cur_row_full[[2]], plot = FALSE)
+        new_row$comparison <- paste0(cur_row_full[[1]], "-vs-", cur_row_full[[2]])
+        df_out <- rbind(df_out, new_row)
+        
+        }
+    if (sig_plots == TRUE) {
+        filt_df <- df_out %>% mutate(p.value_adj = p.adjust(p.value, method = "bonferroni")) %>%
+            filter(p.value_adj < 0.05) %>%
+            arrange(p.value_adj)
+        for (row_filt in seq(nrow(filt_df))) {
+            split_dat <- str_split(filt_df[row_filt,"comparison"],pattern = "-vs-")
+            split_dat[[1]][2]
+            plt <- cogaps_quicK_check(joined_samps, split_dat[[1]][1], split_dat[[1]][2], plot = T)
+            plot_list[[filt_df[[row_filt,"comparison"]]]] <- plt
+        }
+        full_obj <- list()
+        full_obj[["table"]] <- df_out
+        full_obj[["plots"]] <- plot_list
+        return(full_obj)
+    }
+    return(df_out)
+}
+
+
+cluster_cogaps_sum <- function(gene_cluster, cogaps_genes){
+    clust_only <- gene_cluster[,-1]
+    data_out <- NULL
+    for (cluster in seq(ncol(clust_only))) {
+        genes <- unique(clust_only[,cluster])
+        for (patterns in seq(ncol(cogaps_genes)- 2)) {
+            cur_genes <- top_cogaps_genes(cogaps_genes,
+                                          patterns, n_genes = "all") %>%
+                filter(gene_name %in% genes)
+            cur_res <- mean(cur_genes[,3])
+            data_out <- rbind(data_out,
+                c(colnames(clust_only)[cluster], paste0("Pattern_",patterns), cur_res))
+        }
+    }
+    colnames(data_out) <- c("Clusters", "Patterns", "Mean Gene Association From Pattern")
+    data_out <- as.data.frame(data_out) %>% arrange(desc(`Mean Gene Association From Pattern`))
+    data_out[,3] <- as.numeric(data_out[,3])
+    return(data_out)
+    }
+
+cogaps_alphnum_comparison_df <- function(cogs_obj,
+                                         alphnum_clusts,
+                                         alphnum_profiles,
+                                         gtab){
+    ## Incorporate previous functions to make this require less functions
+    
+    sample_patterns <- join_cogaps_samp_dat(cogs_obj, lung_profiles)
+    gene_patterns <- join_cogaps_gene_dat(cogs_obj, gtab)
+    alphnum_cog_matched <- cluster_cogaps_sum(alphnum_clusts, gene_patterns)
+    ## New code
+    final_out <- NULL
+    pval_df <- matched_prof_pattern_plots(sample_patterns, alphnum_cog_matched, sig_plots = F) %>%
+        separate(comparison, c("alphnum", "cog_pattern"),sep = "-vs-", remove = FALSE)
+    ## For loop for all patterns
+    pattern_marks <- patternMarkers(cogs_obj)
+    pattern_marks <- lapply(pattern_marks$PatternMarkers, function(x){
+                        ind <- match(x, gtab$gene_id)
+                        renamed_dat <- gtab$gene_name[ind]
+    
+                      })
+    patterns <- names(pattern_marks)
+    for (pattern in patterns) {
+        #Col 1 is pattern
+        col_1 <- pattern
+        #Col 2 get best correlating alphnum
+        top_res <- filter(pval_df, cog_pattern == pattern) %>%
+            arrange(p.value) %>% slice(1)
+        col_2 <- top_res$alphnum
+        #Col 3 p value
+        col_3 <- top_res$p.value
+        # Col 4 pattern from cogaps or ours
+        markers <- pattern_marks[[pattern]]
+        
+        col_4 <- ifelse(is_empty(markers), "cogaps_failed", "cogaps_worked")
+        #Col 5 genes from patterns
+        if (is_empty(markers)) {
+            ### Pull top genes from alphnum data
+            cogaps_genes <- join_cogaps_gene_dat(cogs_obj, gtab)
+            alphnum_genes <- top_cogaps_genes(cogaps_genes,
+                                             pattern_n = as.integer(stringr::str_extract(pattern, "\\d+")),
+                                             n_genes = 10)
+            ## In the future maybe come up with a filter on the top associated genes
+            col_5 <- alphnum_genes$gene_name
+             col_5 <- paste0(col_5, collapse = ", ")
+        } else {
+            col_5 <- pattern_marks[[pattern]]
+            col_5 <- paste0(col_5, collapse = ", ")
+        }
+        ## Col 6 genes from most associatd alphnum clust
+        col_6 <- alphnum_clusts[[top_res$alphnum]]
+        col_6 <- col_6[col_6 != ""]   
+        col_6 <- paste0(col_6, collapse = ", ")
+    
+            new_row <- as.data.frame(cbind(col_1, col_2, col_3, col_4, col_5, col_6))
+            colnames(new_row) <- c("CoGAPS Pattern",
+                                   "Alphnum Cluster",
+                                   "P-value of sample correlation",
+                                   "Can cogaps take out marker genes?",
+                                   "Cogaps Pattern Markers",
+                                   "Alphnum Cluster Genes")
+            final_out <- rbind(final_out, new_row)
+    }
+    
+    return(final_out)
+    
+}
+```
+
+
 
 Set parameters
 ```{r}
@@ -267,6 +466,13 @@ sample_patterns <- sample_patterns_cogaps_u
 alphnum_cog_matched <- top_clusters_per_pattern_u
 cogaps_genes <- cog_out_u
 gtab <- high_var_gtab
+
+
+cogs_obj = cog_out_d
+alphnum_clusts = lung_clusts
+alphnum_profiles = lung_profiles
+gtab = high_var_gtab
+
 cogaps_alphnum_comparison_df <- function(cogs_obj,
                                          alphnum_clusts,
                                          alphnum_profiles,
@@ -322,7 +528,7 @@ cogaps_alphnum_comparison_df <- function(cogs_obj,
     
             new_row <- as.data.frame(cbind(col_1, col_2, col_3, col_4, col_5, col_6))
             colnames(new_row) <- c("CoGAPS Pattern",
-                                   "Alphmum Cluster",
+                                   "Alphnum Cluster",
                                    "P-value of sample correlation",
                                    "Can cogaps take out marker genes?",
                                    "Cogaps Pattern Markers",
@@ -355,15 +561,47 @@ cog_analysis_u <- cogaps_alphnum_comparison_df(cogs_obj = cog_out_u,
 
 
 
-excel_out  <- list(coGAPS_patterns_5 = cog_analysis_d,
-             coGAPS_patterns_8 = cog_analysis_e,
-             coGAPS_patterns_11 = cog_analysis_u)
+# excel_out  <- list(paste0("coGAPS_patterns_",nrow(cog_analysis_d)) = cog_analysis_d,
+#              paste0("coGAPS_patterns_",nrow(cog_analysis_e)) = cog_analysis_e,
+#              paste0("coGAPS_patterns_",nrow(cog_analysis_u)) = cog_analysis_u,)
 
-openxlsx::write.xlsx(excel_out, file = "data_out/3_cogaps_patterns.xlsx")
+excel_out <- list(cog_analysis_d, cog_analysis_e, cog_analysis_u)
+names(excel_out) <- c(paste0("coGAPS_patterns_",nrow(cog_analysis_d)),
+                       paste0("coGAPS_patterns_",nrow(cog_analysis_e)),
+                       paste0("coGAPS_patterns_",nrow(cog_analysis_u)))
+
+openxlsx::write.xlsx(excel_out, file = paste0("data_out/3_cogaps_patterns_var_",cur_var,".xlsx"))
 ```
 
+Save current environment
+```{r}
+#save.image("data_out/current_cogaps.rda")
+save(cog_analysis_d, cog_analysis_e, cog_analysis_u,
+     file = paste0("data_out/cogaps_var_",cur_var,""))
+#load("data_out/current_cogaps.rda")
+```
+
+Load HPAStainR
+```{r}
+library(HPAStainR)
+hpa_dat <- HPA_data_downloader(tissue_type = "both", save_file = FALSE)
+HPAStainR(cog_analysis_u$`Cogaps Pattern Markers`[11],
+          hpa_dat = hpa_dat$hpa_dat,cancer_dat = hpa_dat$cancer_dat,cancer_analysis = "normal")
+```
 
 ```{r}
+left_join(stab_lung,pheno_dat)
+
+stab_lung$TRISCHD
+
+pattern_clust_u <- join_cogaps_samp_dat(cog_out_u, lung_profiles)
+joined_pattern_clust_stab <- left_join(pattern_clust_u, stab_lung)
+
+
+joined_pattern_clust_stab$DTHVNT <- as.factor(joined_pattern_clust_stab$DTHVNT)
+
+ggplot(joined_pattern_clust_stab, aes(DTHVNT, TRISCHD)) +
+    geom_sina()
 
 ```
 
