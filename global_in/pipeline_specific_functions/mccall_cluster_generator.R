@@ -66,6 +66,10 @@ mccall_cluster_generator <- function(cor_out,
                     starting_cut = starting_cut + 0.001
                 }
                 all_clusts <- table(clusts_sub)
+                ## Adding a if else statement to prevent a destruction of clusters
+                if (max(all_clusts) <=required_genes) {
+                    next
+                }
                 ## arbitrary N of required genes for a clusters
                 ind <- all_clusts >= required_genes
                 clusts_filt <- all_clusts[ind]
@@ -96,7 +100,7 @@ mccall_cluster_generator <- function(cor_out,
         ## Rename clusters here
         new_nums <- seq(0, length(unique(clusts)) - 1)
         for (ind in seq(length(unique(clusts)))) {
-            clusts[clusts == unique(clusts)[ind]] <- new_nums[ind]
+            clusts[clusts == sort(unique(clusts))[ind]] <- new_nums[ind]
         }
     }
     ### END OF CLUSTER BREAKER ###
