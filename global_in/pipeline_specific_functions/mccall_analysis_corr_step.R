@@ -11,7 +11,9 @@ mccall_analysis_corr_step <- function(tissue,
                                       ## definition changes on the previous
                                       ## argument
                                       variance_value,
-                                      correlation = "spearman"){
+                                      correlation = "spearman",
+                                      gene_filter_list = NULL,
+                                      MARCC = FALSE){
     ### The purpose of this function is to complete the first and most
     ### computationally intensive section of the McCall pipeline which is
     ### loading in the normalized data, filtering the genes on a variance
@@ -19,7 +21,11 @@ mccall_analysis_corr_step <- function(tissue,
     
     ## loading the data
     load(paste0(path_to_files,tissue,"-vsd-mean-filtered.rda"))
-    vsdMeanFiltered <- generalVSDMeanFiltered
+    if (MARCC == FALSE) {
+        vsdMeanFiltered <- generalVSDMeanFiltered
+    } else{
+        vsdMeanFiltered <- get(paste0(tissue, "VSDMeanFiltered"))
+    }
     v <- apply(assay(vsdMeanFiltered),1,var)
     ## Selecting the variance type and creating the index
     if (variance_type == "manual") {
@@ -35,6 +41,13 @@ mccall_analysis_corr_step <- function(tissue,
     vsdHighVar <- assay(vsdMeanFiltered)[ind,]
     rownames(vsdHighVar) <- gtabMeanFiltered$gene_name[ind]
     colnames(vsdHighVar) <- vsdMeanFiltered$SAMPID
+    
+    ## Apply gene filter
+    if (!(is.null(gene_filter_list))) {
+        ind <- rownames(vsdHighVar) %in% gene_filter_list
+        vsdHighVar <- vsdHighVar[ind,]
+    }
+    
     ## Removing duplicated genes
     dim(vsdHighVar)
     vsdHighVar <-  vsdHighVar[!(duplicated(rownames(vsdHighVar))),]
