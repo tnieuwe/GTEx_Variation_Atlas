@@ -77,5 +77,7 @@ clust_breaker <- function(cluster_input,
     dat_out <- list()
     dat_out[["sub_genes"]] <- gclusts
     dat_out[["sub_profile"]] <- clusterProfiles
+    dat_out[["dendo_sub"]] <- dendo_sub
+    dat_out[["sub_cor"]] <- sub_cor
     return(dat_out)
 }
