@@ -69,7 +69,7 @@ clust_breaker <- function(cluster_input,
         
     }
     
-    new_col_names <- paste0(rep(cluster_select, ncol(gclusts)), c(1,2,3))
+    new_col_names <- paste0(rep(cluster_select, ncol(gclusts)), seq(ncol(gclusts)))
     rownames(clusterProfiles) <- colnames(vsdHighVarCenteredClust)
     colnames(gclusts) <- new_col_names
     colnames(clusterProfiles) <- new_col_names
