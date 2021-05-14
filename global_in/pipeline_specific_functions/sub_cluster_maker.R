@@ -59,7 +59,7 @@ sub_cluster_maker <- function(clust_initial){
     gclusts <- gclusts[,order(colnames(gclusts))]
     
     ## Stratify cluster inclusion
-    ind <- which(rownames(vsdHighVar) %in% rownames(gcor)[cnames != ""])
+    ind <- which(rownames(vsdHighVar) %in% rownames(anno)[anno$cluster != ""])
     vsdHighVarClust <- clust_initial$high_var_genes[ind,]
     vsdHighVarCenteredClust <- clust_initial$high_var_centered[ind,]
     vsdHighVarNoise <- clust_initial$high_var_genes[-ind,]
