@@ -3,6 +3,18 @@ mccall_cluster_generator <- function(cor_out,
                                      ## the agglomerative approach to break up
                                      ## subclusters.
                                      cluster_breaker = FALSE,
+                                     ## The below argument takes a numeric
+                                     ## between 0-1 that determines what the
+                                     ## correlation quantile of all data is set
+                                     ## at to induce having subclusters created
+                                     sub_clust_cut_off = .85,
+                                     ## The below argument takes a numeric
+                                     ## between 0-1 that determines what the
+                                     ## quantile of the subcluster will be used
+                                     ## as a threshold for when to stop the 
+                                     ## agglomerative approach of cluster
+                                     ## creation
+                                     agglo_cut_off = .85,
                                      required_genes = 6){
     ### This function loads in the output of mccall_analysis_corr_step and
     ### creates clusters based on a tau critical value generated based off the
@@ -38,14 +50,16 @@ mccall_cluster_generator <- function(cor_out,
             sub_clust <- (gcor[genes,genes])
             cur_clust_mean <- mean(abs(sub_clust))
             ## Create a threshold that determine if we slice a cluster or not
-            break_down_threshold <- quantile(abs(gcor), .85)
+            break_down_threshold <- quantile(abs(gcor), sub_clust_cut_off)
             if (cur_clust_mean < break_down_threshold) {
                 ## Create cluster  dendrogram used to split cluster into
                 ## subclusters
                 sub_dendo <- hclust(d=as.dist(1-abs(sub_clust)), method = "average")
-                cur_thresh <- quantile(abs(sub_clust), .85) ## Quantile value is arb
+                cur_thresh <- quantile(abs(sub_clust), agglo_cut_off) ## Quantile value is arb
                 cur_min_corr <- 1
                 starting_cut <- 0
+                ## Force break value after 1000 same results
+                cur_corr_storage <- c(1, rep(0, 999))
                 ## This loops starts at the height of 0 on the dendrogram where
                 ## every cluster is one gene with a correlation of 1. It then 
                 ## moves up in steps of 0.001 and recalculates the correlation
@@ -64,6 +78,11 @@ mccall_cluster_generator <- function(cor_out,
                     ## Arb step, could do some gradient descent stuff here if 
                     ## runtime ever becomes prohibitive
                     starting_cut = starting_cut + 0.001
+                    ## Adding code below to force a quit out if the cor doesn't change after 1000 iterations
+                    cur_corr_storage <- append(cur_corr_storage[-1], cur_min_corr)
+                    if (length(unique(cur_corr_storage)) == 1) {
+                        break
+                    }
                 }
                 all_clusts <- table(clusts_sub)
                 ## Adding a if else statement to prevent a destruction of clusters
