@@ -1,5 +1,5 @@
 ---
-title: "Quick muscle test"
+title: "Comparing GTEx v8 to GTEx V7"
 author: "Tim Nieuwenhuis"
 date: "3/19/2021"
 output: html_document
@@ -349,5 +349,12 @@ ggplot(summaried_dat_nx, aes(y= tissue, x = unique_genes, fill = analysis)) +
 ggsave(filename = "output/gene_unique_to_analysis_no_x.pdf", height = 7.5)
 
 
+```
+
+```{r}
+sink(file = paste0('run_history/cluster_comparison_session_info_', Sys.Date(), ".txt"),
+     type = "output")
+sessionInfo()
+sink()
 ```
 
