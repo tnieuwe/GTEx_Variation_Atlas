@@ -47,14 +47,28 @@ save(dat, gtab, stab, file = "output/gtex-gene-counts-v8.rda")
 Generate rda files used for pca checking
 ```{r}
 load("output/gtex-gene-counts-v8.rda")
-tissue_list = c("lung", "artery_coronary",	"kidney_cortex",
-                     "skin_sun_exposed", "prostate")
-tissue_names = c("Lung", "Artery - Coronary",
-                 "Kidney - Cortex", "Skin - Sun Exposed (Lower leg)", "Prostate")
 
-tissue_list = c(
-                     "skin_sun_exposed", "prostate")
-tissue_names = c( "Skin - Sun Exposed (Lower leg)", "Prostate")
+## All tissues ran so far are commented out below
+# tissue_list = c("lung",
+#                 "artery_coronary",
+#                 "kidney_cortex",
+#                 "skin_sun_exposed",
+#                 "prostate",
+#                 "brain_spinal_cord__cervical_c_1",
+#                 "colon_sigmoid")
+# tissue_names = c("Lung",
+#                  "Artery - Coronary",
+#                  "Kidney - Cortex",
+#                  "Skin - Sun Exposed (Lower leg)",
+#                  "Prostate",
+#                  "Brain - Spinal cord (cervical c-1)",
+#                  "Colon - Sigmoid")
+
+
+tissue_list = c("brain_spinal_cord__cervical_c_1",
+                "colon_sigmoid")
+tissue_names = c("Brain - Spinal cord (cervical c-1)",
+                 "Colon - Sigmoid")
 
 for (j in seq(length(tissue_list))) {
     cur_tiss <- tissue_list[j]
@@ -83,5 +97,12 @@ for (j in seq(length(tissue_list))) {
     
 }
 
+```
+
+```{r}
+sink(file = paste0('run_history/set_up_code_session_info_', Sys.Date(), ".txt"),
+     type = "output")
+sessionInfo()
+sink()
 ```
 
