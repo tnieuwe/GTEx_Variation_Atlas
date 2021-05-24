@@ -1,0 +1,263 @@
+---
+title: "Different tests"
+author: "Tim Nieuwenhuis"
+date: "4/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Variables:
+vst vs variance stabilizing transformation
+old gtex data vs new
+
+Load in best data
+```{r}
+golden_goose <- read.csv("../../../GTEx_variation/v8_output/lung-gene-clusters-high-variance.csv")
+load("data_in/lung-vsd-mean-filtered.rda")
+
+```
+
+
+Initially we clean and prepare the old and new data
+
+old data pipe 
+```{r}
+load(file = "data_in/gtex-gene-counts-v8-old.rda")
+samp_ind <- (stab$SMTSD == "Lung")
+dat_lung <- dat[,samp_ind]
+stab_lung <- stab[samp_ind,]
+old_gtab <- gtab
+## Make DESeq object
+des_dat_old <- DESeqDataSetFromMatrix(countData = dat_lung,
+                                  colData = stab_lung,
+                                  design = ~1)
+```
+
+New data pipe
+```{r}
+rm(dat, gtab, stab)
+load(file = "../global_in/gtex-gene-counts-v8.rda")
+samp_ind <- (stab$SMTSD == "Lung")
+dat_lung <- dat[,samp_ind]
+stab_lung <- stab[samp_ind,]
+new_gtab <- gtab
+## Make DESeq object
+des_dat_new <- DESeqDataSetFromMatrix(countData = dat_lung,
+                                  colData = stab_lung,
+                                  design = ~1)
+```
+
+Variance stabilizing transformation
+```{r} 
+full_old_norm <- varianceStabilizingTransformation(des_dat_old)
+full_new_norm <- varianceStabilizingTransformation(des_dat_new)
+
+```
+
+vst
+```{r}
+vst_old_norm <- vst(des_dat_old)
+vst_new_norm <- vst(des_dat_new)
+```
+Put everything into one list for the for loop
+```{r}
+normalized_list <- list(old_vst = vst_old_norm,
+                             new_vst = vst_new_norm,
+                             old_full = full_old_norm,
+                             new_full = full_new_norm)
+```
+
+
+Loop through th matt mcall analysis to see which one works
+
+```{r}
+filtered_normalized <- list()
+filtered_gtab <- list()
+for (test_ind in seq(length(normalized_list))) {
+    analysis_name <- names(normalized_list[test_ind])
+    if (str_detect(analysis_name, "new")) {
+        gtab <- new_gtab
+    } else {
+        gtab <- old_gtab
+    }
+    
+    
+    dat <- assay(normalized_list[[test_ind]])
+    m <- rowMeans(dat)
+    ind <- which(m>5)
+    gtab_filt <- gtab[ind,]
+    dat_filt <- dat[ind,]
+    filtered_normalized[[analysis_name]] <- dat_filt
+    filtered_gtab[[analysis_name]] <- gtab_filt
+}
+
+```
+Compare filtered data to the data we load in
+```{r}
+dim(assay(lungVSDMeanFiltered))
+
+for ( test_ind in seq(length(filtered_normalized))) {
+    print(names(filtered_normalized[test_ind]))
+    print("Dims")
+    res_one <- dim(assay(lungVSDMeanFiltered)) == dim(filtered_normalized[[test_ind]])
+    print(res_one)
+    print("Total match")
+    res_two <- identical((assay(lungVSDMeanFiltered)), filtered_normalized[[test_ind]])
+    print(res_two)
+}
+
+identical(filtered_normalized$old_full,filtered_normalized$new_full)
+
+filtered_normalized
+
+
+sum((assay(lungVSDMeanFiltered)) - filtered_normalized$new_full)
+
+assay(lungVSDMeanFiltered)[1:5,1:5]
+filtered_normalized$new_full[1:5,1:5]
+```
+
+We see that the "full" version is accurate. Is it still accurate after going through the mccall pipeline
+
+```{r}
+numeric_var <- 4
+for_variance_normalized <- filtered_normalized[3:4]
+for_variance_gtab <- filtered_gtab[3:4]
+gclusts_list <- list()
+
+for (analysis_ind in seq(length(for_variance_normalized))) {
+    analysis_name <- names(for_variance_normalized[analysis_ind])
+    vst_lung_mean_filtered <- for_variance_normalized[[analysis_ind]]
+    gtab_lung <- for_variance_gtab[[analysis_ind]]
+        
+        ## Filter down to high variance genes
+    v <- apply(vst_lung_mean_filtered,1,var)
+    ind <- which(v > numeric_var)
+    high_var_lung <- vst_lung_mean_filtered[ind,]
+    high_var_gtab <- gtab_lung[ind,]
+    high_var_matrix_lung <- (high_var_lung)
+    
+    # save(vst_lung_mean_filtered, stab_lung, gtab_lung,
+    #      high_var_lung,
+    #      high_var_gtab,
+    #      file = paste0("gene_analysis_comparisons/data_out/lung_vst_var_",cur_var,"-",version,".rda"))
+    # save(vst_lung_mean_filtered, stab_lung, gtab_lung,
+    #      high_var_lung,
+    #      high_var_gtab,
+    #      file =  paste0("gene_analysis_comparisons/data_in/lung_vst_var_",cur_var,"-",version,".rda"))
+    # 
+    ## Alphnum clustering method
+    rownames(high_var_matrix_lung) <- high_var_gtab$gene_name
+    vsd_high_var_centered_lung <- high_var_matrix_lung - rowMeans(high_var_matrix_lung)
+    
+    gcor <- cor(t(high_var_matrix_lung))
+    
+    ## Generate critical value
+    ngene <- nrow(high_var_matrix_lung)
+    nsamp <- ncol(high_var_matrix_lung)
+    tauCrit <- round(qKendall(0.01/((ngene^2)-ngene)/2, nsamp, lower.tail = F), 2)
+    
+    ## cluster based on absolute correlation distance
+    dendo <- hclust(d=as.dist(1-abs(gcor)), method = "average")
+    
+    ## clean up heatmap to focus on interesting gene clusters
+    clusts <- cutree(dendo, h=1-tauCrit)
+    tabclusts <- table(clusts)
+    ind <- which(tabclusts >= 6) #arbitrary
+    clusts[!(clusts %in% names(tabclusts)[ind])] <- 0
+    ntmp <- names(clusts)
+    clusts <- as.numeric(as.factor(clusts))-1
+    names(clusts) <- ntmp
+    
+    
+    #Naming clusters based on their clust values
+    #Very manual process
+    n <- length(table(clusts))
+    cnames <- rep("", length(clusts))
+    
+    #Tim for loop
+    for (clst in 1:(n)){
+        cnames[clusts==clst] <- LETTERS[clst]
+    }
+    
+    anno = data.frame("cluster"=factor(cnames))
+    rownames(anno) = names(clusts)
+    ## make matrix to output
+    gclusts <- matrix("", nrow=max(table(cnames)), ncol=length(table(cnames)))
+    colnames(gclusts) <- levels(anno$cluster)
+    for(k in 1:length(table(cnames))){
+        tmp <- colnames(gclusts)[k]
+        gclusts[1:sum(cnames==tmp), k] <- rownames(gcor)[cnames==tmp]
+    }
+    
+    #Sub clusters code! Now annotated
+    
+    for (column in LETTERS[1:(length(unique(cnames)) -1 )]) {
+        #Pull out the first column
+        test_col <- gclusts[,column]
+        first_gene <- test_col[1]
+        #Make an index to subset gcor to just a single clusters
+        ind <- which(rownames(gcor) %in% test_col)
+        sub_cor <- gcor[ind,ind]
+        #Test if the cluster has any negatively correlating genes
+        ind2 <- sub_cor[,first_gene] < 0
+        
+        #If there are negatively correlating genes...
+        if (sum(ind2) > 0) {
+            #generate sub cluster 1
+            sub_1 <- rownames(sub_cor)[!ind2]
+            #Subcluster 2
+            sub_2 <- rownames(sub_cor)[ind2]
+            
+            #Remover old column to replace with new columns
+            gclusts <- as.matrix(gclusts[,!(colnames(gclusts) == column)])
+            
+            
+            #nrow(gclusts) Not sure if useful, keeping for now
+            #add sub-columns
+            
+            #Make a single matrix of same rows as gclusts, one for each sub-cluster. 
+            matrix_1  <- as.matrix(c(sub_1 ,rep("", nrow(gclusts) - length(sub_1))), )
+            colnames(matrix_1) <- paste0(column,"-1")
+            
+            # cbind(gclusts, matrix_1, matrix_2)
+            
+            
+            matrix_2  <- as.matrix(c(sub_2 ,rep("", nrow(gclusts) - length(sub_2))), )
+            colnames(matrix_2) <- paste0(column,"-2")
+            
+            #Add subclusters to gclusts
+            gclusts <-   cbind(gclusts, matrix_1, matrix_2)
+            
+        }
+        
+        
+    }
+    
+    
+    
+    #Realphebatize columns for sake of beauty 
+    gclusts <- gclusts[,order(colnames(gclusts))]
+    
+    gclusts_list[[analysis_name]] <- gclusts
+}
+
+
+
+```
+
+
+```{r}
+length(unique(unlist(golden_goose)))
+length(unique(unlist(gclusts_list$new_full)))
+
+df_out <- gclusts_list$new_full
+
+"SFTPB" %in% df_out[,"B-1"]
+
+
+```
+
