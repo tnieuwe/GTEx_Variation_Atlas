@@ -1,0 +1,360 @@
+---
+title: "Spearman_vs_Kendalls_comparison"
+author: "Tim Nieuwenhuis"
+date: "5/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(ggforce)
+library(viridis)
+library(RColorBrewer)
+```
+
+Repurposing the code used to compare V7 to V8 results to Spearman V Kendall
+```{r}
+tiss_list <- read.csv("~/Halushka Lab/Matrisome/Matrisome_GTEx_analysis_final/GTEx_age_sex_analysis/input/general_list_test_clean.txt")
+comparison_table_kend <- NULL
+comparison_table_spear <- NULL
+for (tissue in tiss_list[,1]) {
+    if (startsWith(tissue, "cells_cultured_fi")|
+        startsWith(tissue, "colon_tr")|
+        startsWith(tissue, "test")) {
+        next
+    }
+    new_path <- paste0("~/Halushka Lab/Final_git_repos/GTEx_Variation_Atlas",
+                       "/MARCC output/variance_genes_kendall/",
+                       tissue,
+                       "-gene-clusters-high-variance.csv")
+    old_path <- paste0("~/Halushka Lab/Final_git_repos/GTEx_Variation_Atlas",
+                       "/MARCC output/variance_genes_spearman/",
+                       tissue,
+                       "-gene-clusters-high-variance.csv")
+    
+    ##First loop to fix kend to be like spear
+    res_kend <- read.csv(new_path)
+    res_spear <- read.csv(old_path)
+    
+    i <- 1
+    new_res_kend <- NULL
+    while (i <= ncol(res_kend)) {
+        ## When there is a column with a [.] combine it with the following column
+        sub_clust_bool <- str_detect(colnames(res_kend)[i],pattern = "[.]")
+        if (sub_clust_bool == FALSE) {
+            new_res_kend <- as.data.frame(cbind(new_res_kend, res_kend[,i]))
+            colnames(new_res_kend)[ncol(new_res_kend)] <- str_sub(colnames(res_kend)[i],start = 1, end = 1)
+            i <- i + 1
+             next
+        }
+        joined_col <- c(res_kend[,i], res_kend[,i + 1])
+        joined_col <- joined_col[joined_col != ""]
+        
+        row_diff <- nrow(new_res_kend)  - length(joined_col)
+        if (row_diff == 0) {
+            new_res_kend <- as.data.frame(cbind(new_res_kend, joined_col))
+            colnames(new_res_kend)[ncol(new_res_kend)] <- str_sub(colnames(res_kend)[i],start = 1, end = 1)
+            i <- i + 2
+        } else if (row_diff > 0){
+            joined_col <- append(joined_col, rep("", row_diff))
+            new_res_kend <- as.data.frame(cbind(new_res_kend, joined_col))
+            colnames(new_res_kend)[ncol(new_res_kend)] <- str_sub(colnames(res_kend)[i],start = 1, end = 1)
+            i <- i + 2
+        } else {
+            abs_diff <- abs(row_diff)
+            empt_matrix <- matrix(data = "", nrow =abs_diff, ncol = ncol(new_res_kend))
+            colnames(empt_matrix) <- colnames(new_res_kend)
+            new_res_kend <- as.data.frame(rbind(new_res_kend, empt_matrix))
+            new_res_kend <- as.data.frame(cbind(new_res_kend, joined_col))
+            colnames(new_res_kend)[ncol(new_res_kend)] <- str_sub(colnames(res_kend)[i],start = 1, end = 1)
+            i <- i + 2
+        }
+        ## Use ind + 1 to skip to the next column?
+    }
+    
+
+    
+    ## Need to make the spearman also go through the collapse loop
+    
+    i <- 1
+    new_res_spear <- NULL
+    while (i <= ncol(res_spear)) {
+        ## When there is a column with a [.] combine it with the following column
+        sub_clust_bool <- str_detect(colnames(res_spear)[i],pattern = "[.]")
+        if (sub_clust_bool == FALSE) {
+            new_res_spear <- as.data.frame(cbind(new_res_spear, res_spear[,i]))
+            colnames(new_res_spear)[ncol(new_res_spear)] <- str_sub(colnames(res_spear)[i],start = 1, end = 1)
+            i <- i + 1
+             next
+        }
+        joined_col <- c(res_spear[,i], res_spear[,i + 1])
+        joined_col <- joined_col[joined_col != ""]
+        
+        row_diff <- nrow(new_res_spear)  - length(joined_col)
+        if (row_diff == 0) {
+            new_res_spear <- as.data.frame(cbind(new_res_spear, joined_col))
+            colnames(new_res_spear)[ncol(new_res_spear)] <- str_sub(colnames(res_spear)[i],start = 1, end = 1)
+            i <- i + 2
+        } else if (row_diff > 0){
+            joined_col <- append(joined_col, rep("", row_diff))
+            new_res_spear <- as.data.frame(cbind(new_res_spear, joined_col))
+            colnames(new_res_spear)[ncol(new_res_spear)] <- str_sub(colnames(res_spear)[i],start = 1, end = 1)
+            i <- i + 2
+        } else {
+            abs_diff <- abs(row_diff)
+            empt_matrix <- matrix(data = "", nrow =abs_diff, ncol = ncol(new_res_spear))
+            colnames(empt_matrix) <- colnames(new_res_spear)
+            new_res_spear <- as.data.frame(rbind(new_res_spear, empt_matrix))
+            new_res_spear <- as.data.frame(cbind(new_res_spear, joined_col))
+            colnames(new_res_spear)[ncol(new_res_spear)] <- str_sub(colnames(res_spear)[i],start = 1, end = 1)
+            i <- i + 2
+        }
+        ## Use ind + 1 to skip to the next column?
+    }
+        for (col in seq(ncol(new_res_spear))) {
+        vect_col <- new_res_spear[,col]
+        new_cluster <- colnames(new_res_spear)[col]
+        n_genes_clust <- length(vect_col)
+        vect_col <- vect_col[vect_col != ""]
+        n_genes_clust <- length(vect_col)
+        all_old_clusters <- colSums(
+          apply(new_res_kend,
+                MARGIN = 2,
+                FUN = function(x){vect_col %in% x}))
+        top_old_clust <- all_old_clusters[order(all_old_clusters, decreasing = T)][1]
+        all_overlap_genes <- sum(all_old_clusters)
+        new_row <- c(tissue,
+                    new_cluster,
+                    n_genes_clust,
+                    all_overlap_genes,
+                    names(top_old_clust),
+                    unname(top_old_clust)
+                    )
+        comparison_table_spear <- rbind(comparison_table_spear, new_row)
+        }
+    
+        for (col in seq(ncol(new_res_kend))) {
+        vect_col <- new_res_kend[,col]
+        new_cluster <- colnames(new_res_kend)[col]
+        n_genes_clust <- length(vect_col)
+        vect_col <- vect_col[vect_col != ""]
+        n_genes_clust <- length(vect_col)
+        all_old_clusters <- colSums(
+          apply(new_res_spear,
+                MARGIN = 2,
+                FUN = function(x){vect_col %in% x}))
+        top_old_clust <- all_old_clusters[order(all_old_clusters, decreasing = T)][1]
+        all_overlap_genes <- sum(all_old_clusters)
+        new_row <- c(tissue,
+                    new_cluster,
+                    n_genes_clust,
+                    all_overlap_genes,
+                    names(top_old_clust),
+                    unname(top_old_clust)
+                    )
+        comparison_table_kend <- rbind(comparison_table_kend, new_row)
+        }
+    
+    }
+
+comparison_table <- as_tibble(comparison_table)
+
+# Long format:
+# Col 1 is tissue
+# Col 2 is cluster letter
+# Col 3 is how many genes it has
+# Col 5 is how many genes are shared
+# Col 6 prominent old cluster that shares those genes
+# Col 7 is how many genes in that specific old cluster are shared
+
+
+comparison_table_kend <- comparison_table_kend %>% as_tibble() %>% mutate(V3 = as.numeric(V3),
+                           V4 = as.numeric(V4),
+                           V6 = as.numeric(V6))
+
+comparison_table_spear <- comparison_table_spear %>% as_tibble() %>% mutate(V3 = as.numeric(V3),
+                           V4 = as.numeric(V4),
+                           V6 = as.numeric(V6))
+
+colnames(comparison_table_kend) <- c("tissue",
+                                "kend_cluster",
+                                "n_kend_genes",
+                                "shared_kend_spear",
+                                "match_spear_clust",
+                                "match_spear_genes"
+                                )
+
+colnames(comparison_table_spear) <- c("tissue",
+                                "spear_cluster",
+                                "n_spear_genes",
+                                "shared_spear_kend",
+                                "match_kend_clust",
+                                "match_kend_genes"
+                                )
+```
+
+Plots: version_difference clusters per tissue 
+Plots: version_difference genes per tissue
+```{r}
+## Genes in spear or kend and not in the other
+comparison_table_kend <- comparison_table_kend %>% mutate(missing_in_spear = n_kend_genes - shared_kend_spear,
+                                                      analysis = "kend")
+comparison_table_spear <- comparison_table_spear %>% mutate(missing_in_kend = n_spear_genes - shared_spear_kend,
+                                                      analysis = "spear")
+
+summaried_kend <- comparison_table_kend %>%
+    group_by(tissue) %>%
+    summarise(unique_genes = sum(missing_in_spear),
+              n_clust = n()) %>%
+    mutate(analysis = "kend")
+
+summaried_kend_nx <- comparison_table_kend %>%
+    group_by(tissue) %>%
+    filter(kend_cluster != "X") %>%
+    summarise(unique_genes = sum(missing_in_spear),
+              n_clust = n()) %>%
+    mutate(analysis = "kend")
+
+
+summaried_spear <- comparison_table_spear %>%
+    group_by(tissue) %>%
+    summarise(unique_genes = sum(missing_in_kend),
+              n_clust = n()) %>%
+    mutate(analysis = "spear")
+
+summaried_spear_nx <- comparison_table_spear %>%
+    group_by(tissue) %>%
+    filter(spear_cluster != "X") %>%
+    summarise(unique_genes = sum(missing_in_kend),
+              n_clust = n()) %>%
+    mutate(analysis = "spear")
+
+summaried_dat <- rbind(summaried_kend,summaried_spear)
+summaried_dat_nx <- rbind(summaried_kend_nx,summaried_spear_nx)
+
+
+ggplot(summaried_dat, aes(y= tissue, x = n_clust, fill = analysis)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_viridis(discrete=TRUE) +
+    labs(title = "Number of clusters per tissue across analyses") +
+    xlab("Number of clusters") +
+    ylab("Tissues") +
+    theme_classic()
+ggsave(filename = "data_out/cluster_n_correlation_comparison.pdf", height = 7.5)
+
+
+ggplot(summaried_dat, aes(y= tissue, x = unique_genes, fill = analysis)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_viridis(discrete=TRUE) +
+    labs(title = "N of genes not shared between analyses") +
+    xlab("Genes Unique to Analysis") +
+    ylab("Tissues") +
+    theme_classic()
+ggsave(filename = "output/gene_unique_to_analysis.pdf", height = 7.5)
+
+
+ggplot(summaried_dat_nx, aes(y= tissue, x = unique_genes, fill = analysis)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_viridis(discrete=TRUE) +
+   # scale_color_discrete( brewer.pal(7, "BrBG"), guide = FALSE) +
+    labs(title = "N of genes not shared between analyses",
+         subtitle = "No X cluster") +
+    xlab("Genes Unique to Analysis") +
+    ylab("Tissues") +
+    theme_classic()
+ggsave(filename = "output/gene_unique_to_analysis_no_x.pdf", height = 7.5)
+
+
+```
+
+```{r}
+
+matched_table <- NULL
+for (tissue in tiss_list[,1]) {
+    new_path <- paste0("~/Halushka Lab/Final_git_repos/GTEx_Variation_Atlas",
+                           "/MARCC output/variance_genes_kendall/",
+                           tissue,
+                           "-gene-clusters-high-variance.csv")
+    old_path <- paste0("~/Halushka Lab/Final_git_repos/GTEx_Variation_Atlas",
+                       "/MARCC output/variance_genes_spearman/",
+                       tissue,
+                       "-gene-clusters-high-variance.csv")
+    
+    res_kend <- read.csv(new_path)
+    list_kend <- list()
+    for (col in seq(ncol(res_kend))) {
+        list_kend[[colnames(res_kend[col])]] <- res_kend[,col][res_kend[,col] != ""]    
+    }
+    res_spear <- read.csv(old_path)
+    list_spear <- list()
+    for (col in seq(ncol(res_spear))) {
+        list_spear[[colnames(res_spear[col])]] <- res_spear[,col][res_spear[,col] != ""]    
+    }
+
+    genes_per_clust_kend <- unlist(lapply(list_kend, length))
+    genes_per_clust_spear <- unlist(lapply(list_spear, length))
+    ## Make the one with more clusters the matcher
+    if (length(genes_per_clust_spear) > length(genes_per_clust_kend)) {
+        most_clust <- list_spear
+        least_clust <- list_kend
+        most_name <- "spear"
+    } else if (length(genes_per_clust_spear) == length(genes_per_clust_kend)) {
+        most_clust <- list_spear
+        least_clust <- list_kend
+        most_name <- "spear"        
+    } else {
+        most_clust <- list_kend
+        least_clust <- list_spear
+        most_name <- "kend"
+    }
+    ## Now loop through to find best matches
+    
+    max_overlap <- 0
+    for (clust_ind in seq(length(most_clust))) {
+        cur_most <- most_clust[clust_ind]
+        for (clust_ind2 in seq(length(least_clust))) {
+            cur_least <- least_clust[clust_ind2]
+            cur_overlap <- length(intersect(unlist(cur_most), unlist(cur_least)))
+            if (cur_overlap > max_overlap) {
+                max_overlap <- cur_overlap
+                matched_clust <- names(cur_least)
+                n_least <- length(unlist(cur_least))
+            }
+        }
+        n_most <- length(unlist(cur_most))
+        new_row <- cbind(tissue,
+                         names(cur_most),
+                         matched_clust,
+                         max_overlap,
+                         n_most,
+                         n_least,
+                         most_name
+                         )
+        matched_table <- rbind(matched_table,new_row)
+        max_overlap <- 0
+    }
+
+
+}
+matched_table <- as_tibble(matched_table)
+colnames(matched_table) <- c("tissue", "most_clust", "least_clust", "n_overlap", "n_most", "n_least", "most_corr") 
+matched_table <- matched_table %>%
+    mutate_at(vars(starts_with("n")), funs(as.numeric(.)))
+
+## Per tissue how many clusters fall into X?
+X_cluster_holder <- matched_table %>%
+    group_by(tissue, most_corr) %>%
+    filter(least_clust == "X") %>%
+    summarize(`Clusters engulfed by X` = n() - 1) %>%
+    arrange(desc(`Clusters engulfed by X`))
+
+X_cluster_holder
+
+table(X_cluster_holder$most_corr)
+```
+
