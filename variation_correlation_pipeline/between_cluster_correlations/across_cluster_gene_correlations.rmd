@@ -35,6 +35,7 @@ list_dat <- sapply(tiss_list, function(x){
     new_dat <- read.csv(load_file)
     all_col_names <- colnames(new_dat)
     for (cur_col_name in all_col_names) {
+      ## Below code collapses the negatively correlating gene clusters together
         #cur_col_name <- names(new_dat)[col_ind]
         # if (is.na(cur_col_name)) {
         #     break
@@ -75,17 +76,20 @@ list_dat <- sapply(tiss_list, function(x){
     }
     return_list <- NULL
     return_list[[x]] <- df_list
+    
 })
-print("hi")
+#print("hi")
 ```
-Pull out X genes and collapse genes that negatively correlated
+Pull out high var genes that do not cluster
 ```{r}
 unclust_genes <- c()
 for (tiss_ind in seq_along(list_dat)) {
+  ## Go through tissues
     tiss_dat <- list_dat[[tiss_ind]]
-    orig_n_col <- ncol(tiss_dat)
     for (col_ind in seq_along(tiss_dat)) {
+      ## Go through clusters
         col_name <- names(tiss_dat[col_ind])
+        ## If X cluster append data to unclustered gene vector
         if (col_name == "X") {
            unclust_genes <- append(unclust_genes, tiss_dat[[col_ind]]) 
         } 
@@ -107,14 +111,18 @@ pseudo_cor_mat <- matrix(data = 0, nrow = length(unique_genes), ncol = length(un
 colnames(pseudo_cor_mat) <- unique_genes ; rownames(pseudo_cor_mat) <- unique_genes
 ## Use gene ran in the loop to prevent repeated calculations
 gene_ran <- c()
+## The goal of this loop is to go through every single unique gene and find
+## how many other genes frequently show up in the same cluster with it
 for (gene in unique_genes) {
-    ## Filter list dat to only include clusters the gene is found in
-    gene %in% list_dat$adipose_visceral__omentum$B
+    ## Create a vector that will be used to append genes that appear in shared 
+    ## clusters
     to_count <- c()
     for (tissue_ind in seq(length(list_dat))) {
         tissue_list <- list_dat[[tissue_ind]]
         for (cluster_ind in seq(length(tissue_list))) {
         gene_result <- gene %in% tissue_list[[cluster_ind]]
+        ## If gene appears in the cluster then we append the cluster to the 
+        ## to count vector so we can count all the genes at the end of the loop
         if (gene_result == TRUE) {
             to_count <- append(to_count, tissue_list[[cluster_ind]]) 
             }
@@ -122,6 +130,8 @@ for (gene in unique_genes) {
     }
     all_hits <- sort(table(to_count),decreasing = T)
     ## We check against previously ran genes to stop redundancy
+    ## because the code section below fills in data that is repeated across the
+    ## axis of the matrix.
     all_hits <- all_hits[!(names(all_hits) %in% gene_ran)]
     ## Fill in the matrix
     for (ind_hit_gene in seq_along(all_hits)) {
@@ -132,11 +142,13 @@ for (gene in unique_genes) {
     gene_ran <- append(gene_ran, gene)
 }
 
+## Understand the distribution of the column sums
 pseudo_col_sums <- colSums(pseudo_cor_mat)
 
 pseudo_ind <- pseudo_col_sums > quantile(pseudo_col_sums, .25)
 
-
+## The below code pulls the center diagnol line from the matrix allowing us to
+## to get the N of times a gene shows up in our clusters
 genes_n_clusts <- c()
 for (ind in seq(nrow(pseudo_cor_mat))) {
     genes_n_clusts <- append(genes_n_clusts, pseudo_cor_mat[ind,ind])
@@ -144,13 +156,14 @@ for (ind in seq(nrow(pseudo_cor_mat))) {
 
 names(genes_n_clusts) <- colnames(pseudo_cor_mat)
 
-
+## Test commonly appearing contamination gene
 genes_n_clusts[names(genes_n_clusts) == "PRSS1"]
 
 quantile(genes_n_clusts, c(.85, .90, .95))
 ```
 
 ```{r}
+## 
 frequent_ind <- genes_n_clusts > 6
 frequent_genes <-  genes_n_clusts[frequent_ind]
 
