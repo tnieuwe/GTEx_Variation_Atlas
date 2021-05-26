@@ -26,7 +26,8 @@ tiss_list <- tiss_list[!(tiss_list %in% drop_tiss)]
 
 Load in the cluster data 
 ```{r}
-
+## CURRENT BUG adipose subcutaneous is not in the final table
+## not fixed as of 5/26/2021
 list_dat <- sapply(tiss_list, function(x){
     ## Go through list to load in files
     load_file <-  paste0("../../MARCC output/variance_genes_kendall/kendall-",
@@ -389,12 +390,13 @@ for (tissue_ind in seq_along(list_dat)) {
       ## Group by cluster 
       cluster_vals <- eyeball_clust_log %>%
                 group_by(clusters) %>%
+                ## This method returns the percent based on the eyeballed clusters
                 mutate(in_clust = genes %in% cluster_genes) %>%
                 summarize(clusters,percent_overlap = sum(in_clust)/n()) %>%
                 group_by(clusters) %>%
                 arrange(desc(percent_overlap)) %>%
                 slice_head( n =1)
-     cluster_vals <- as.data.frame(t(cluster_vals))
+     cluster_vals <- as.data.frame(t(cluster_vals)) 
      colnames(cluster_vals) <- cluster_vals[1,]
      cluster_vals <- cluster_vals[-1,]
      
@@ -406,6 +408,117 @@ for (tissue_ind in seq_along(list_dat)) {
     }
     
 }
+rownames(cluster_compare_table) <- NULL
 
+```
+
+
+This code will generated the comparison table above but for each cluster
+it returns the compositional percent of the cluster found in meta cluster.
+```{r}
+cluster_composition_table <- NULL
+for (tissue_ind in seq_along(list_dat)) {
+  ## Pull out tissue name and the clusters of the tissue
+    cur_tis <- names(list_dat[tissue_ind])
+    cluster_list <- list_dat[[tissue_ind]]
+    for (cluster_ind in seq_along(cluster_list)) {
+      ## Pull out cluster name and the tissues associated with it
+        cluster_names <- names(cluster_list[cluster_ind])
+        cluster_genes <- cluster_list[[cluster_ind]]
+        for (unique_clust in unique(eyeball_clust_log$clusters)) {
+          temp_frame <- eyeball_clust_log[eyeball_clust_log$clusters == unique_clust,]
+          percent_coverage <- sum(cluster_genes %in% temp_frame$genes)/length(cluster_genes)
+          temp_row <- cbind(cur_tis, cluster_names, unique_clust, percent_coverage)
+          cluster_composition_table <- rbind(cluster_composition_table, temp_row)
+        }
+    }
+    
+}
+cluster_composition_table<- as_tibble(cluster_composition_table) %>%
+  mutate_at("percent_coverage", as.numeric) %>%
+  rename(cur_tis = "tissue", unique_clust = "meta_clusters")
+
+
+```
+
+
+Select the top result for each cluster
+```{r}
+
+
+## INCOMPLETE
+cluster_proportions <- cluster_compare_table[,3:ncol(cluster_compare_table)]
+for (cur_row_ind in seq(nrow(cluster_proportion))) {
+  cur_row <- cluster_proportions[cur_row_ind,] %>%
+    mutate_if(is.character,as.numeric)
+  max(cur_row[1,])
+}
+```
+Create function that generates a plot for a tissue on the percent composition for each cluster
+```{r}
+## Continue working on thhis 5/27/2021
+
+tissue_filter <- "artery_coronary"
+dat <- cluster_composition_table
+
+composition_plot <- function(dat, tissue_filter,
+                             summarize_unknown = FALSE,
+                             summarize_all_dupes = FALSE){
+  ## If summarize all true, make sure to summarize unkown
+  if (summarize_all_dupes == TRUE) {
+    summarize_unknown = TRUE
+  }
+  ## Create a df for specific tissue
+  temp_df <- dat %>% filter(tissue == tissue_filter)
+  ## Get values for genes not found within normal clusters
+  unique_gene_percent <- temp_df %>%
+    group_by(cluster_names) %>%
+    summarise(tissue,
+              meta_clusters = "unique_genes",
+              percent_coverage = 1- sum(percent_coverage)) %>%
+    unique() %>%
+    select(tissue, cluster_names, meta_clusters, percent_coverage)
+  ## Compress unknowns to make graph more readable
+  if (summarize_unknown == TRUE) {
+    ## Get the sum of unknown values
+    compress_unknown <- temp_df %>% filter(startsWith(meta_clusters, "unkn")) %>%
+                          group_by(cluster_names) %>%
+                          summarize(tissue, cluster_names, meta_clusters = "compressed_unknown",
+                                    percent_coverage= sum(percent_coverage)) %>%
+                          select(tissue, cluster_names, meta_clusters, percent_coverage) %>%
+                          unique()
+    ## Add unknown values back to data
+    temp_df <- temp_df %>% filter(!startsWith(meta_clusters, "unk"))
+    temp_df <- rbind(compress_unknown, temp_df)
+  }
+  ## Compress immuno and contam cluster BROKEN 5/26/2021
+  if (summarize_all_dupes == TRUE) {
+    compress_immuno <- temp_df %>% filter(startsWith(meta_clusters, "imm")) %>%
+                      group_by(cluster_names) %>%
+                      summarize(tissue, cluster_names, meta_clusters = "immuno",
+                                percent_coverage= sum(percent_coverage)) %>%
+                      select(tissue, cluster_names, meta_clusters, percent_coverage) %>%
+                      unique()
+    compress_cont <- temp_df %>% filter(startsWith(meta_clusters, "cont")) %>%
+                      group_by(cluster_names) %>%
+                      summarize(tissue, cluster_names, meta_clusters = "contam",
+                                percent_coverage= sum(percent_coverage)) %>%
+                      select(tissue, cluster_names, meta_clusters, percent_coverage) %>%
+                      unique()
+    compress_both <- rbind(compress_immuno, compress_cont)
+    temp_df <- temp_df %>% filter(!startsWith(meta_clusters, c("imm")),
+                                              !startsWith(meta_clusters, c("imm", "cont")))
+    temp_df <- rbind(compress_unknown, temp_df)
+  }
+  ## Plot figure
+  plot_df <- rbind(temp_df, unique_gene_percent)
+  ggplot(data = plot_df, aes(x = cluster_names, y = percent_coverage, fill = meta_clusters)) +
+    geom_bar(position= "stack", stat = "identity") +
+    viridis::scale_fill_viridis(discrete=TRUE) +
+    labs(title = unique(plot_df$tissue))
+}
+
+
+composition_plot(cluster_composition_table, "artery_coronary",summarize_all_dupes = TRUE)
 ```
 
