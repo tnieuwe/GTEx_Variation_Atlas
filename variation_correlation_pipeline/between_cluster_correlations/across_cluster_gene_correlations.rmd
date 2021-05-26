@@ -163,19 +163,20 @@ quantile(genes_n_clusts, c(.85, .90, .95))
 ```
 
 ```{r}
-## 
+##  An index requiring genes to appear at least 6 times to be considered for downstream analysis. 
 frequent_ind <- genes_n_clusts > 6
 frequent_genes <-  genes_n_clusts[frequent_ind]
 
 top_pseudo <- pseudo_cor_mat[frequent_ind,frequent_ind]
 top_pseudo_log <- log2(top_pseudo + 1)
 
-##Make the annoation
+##Make the annotation
 anno <- data.frame(rep("Never X", nrow(top_pseudo)), row.names = rownames(top_pseudo))
 anno[rownames(anno) %in% unclust_genes,] <- "In X"
 colnames(anno) <- "X Clust"
 colors <- RColorBrewer::brewer.pal(2, "Set1")
 anno_colors <- list("X Clust" = c("Never X" = colors[2], "In X" = colors[1]))
+## Plot the log2 of the pseudo-corr heatmap
 pdf("data_out/inter_cluster_correlation_log.pdf", height = 8, width = 10)
 pheatmap(top_pseudo_log,
           fontsize_row = 1.2,
@@ -187,6 +188,7 @@ pheatmap(top_pseudo_log,
 dev.off()
 
 pdf("data_out/inter_cluster_correlation.pdf", height = 8, width = 10)
+## Plot the non-log pseudo-corr heatmap
 pheatmap(top_pseudo,
           fontsize_row = 1.2,
           fontsize_col = 1.2,
@@ -197,7 +199,7 @@ pheatmap(top_pseudo,
 dev.off()
 
 
-
+## Rerun heatmaps to get the order of their tress
 pheat_out <- pheatmap(top_pseudo,
           fontsize_row = 1.2,
           fontsize_col = 1.2,
@@ -214,6 +216,10 @@ pheat_out_log <- pheatmap(top_pseudo_log,
          annotation_colors = anno_colors
          )
 
+## Using the belwo output I by hand eyeballed the genes to see what I considered
+## a cluster. Very little science here, but I wanted to test if these clusters
+## we saw made sense.
+
 ordered_cluster <- as.data.frame(pheat_out$tree_row$labels[pheat_out$tree_row$order])
 colnames(ordered_cluster) <- "genes"
 write.csv(ordered_cluster, "data_out/ordered_cluster_out.csv")
@@ -222,8 +228,11 @@ ordered_cluster <- as.data.frame(pheat_out_log$tree_row$labels[pheat_out_log$tre
 colnames(ordered_cluster) <- "genes"
 write.csv(ordered_cluster, "data_out/ordered_cluster_log_out.csv")
 ```
+SLATED FOR REMOVAL BELOW
 Include eyeball clusters as annotations
 ```{r}
+## Read in my first attemp at eyeballing the clsuters this analysis will be dropped
+## in the future
 eyeball_clust <- read.csv("data_in/eyeball_clusters.csv")
 anno_2 <- eyeball_clust %>% column_to_rownames("genes") %>% select("cluster")
 missing_genes <- rownames(top_pseudo)[!(rownames(top_pseudo) %in% rownames(anno_2))]
@@ -249,8 +258,12 @@ pheatmap(top_pseudo,
 dev.off()
 
 ```
+REMOVAL OVER
+
 eyeball attempt 2
 ```{r}
+## My second attempt at adding the color annotations from the clusters I eyeballed
+## this is better than my first attempt because the genes are properly ordered. 
 eyeball_clust_2 <- read.csv("data_in/eyeball_clusters_better.csv")
 anno_3 <- eyeball_clust_2 %>% column_to_rownames("genes") %>% select("cluster")
 anno_names <- unique(anno_3$cluster)
@@ -281,6 +294,8 @@ dev.off()
 ```
 
 ```{r}
+## My third attempt at eyeballing the clusters, this time on clusters generated
+## from log2 data.
 eyeball_clust_log <- read.csv("data_in/eyeball_clusters_better_log.csv")
 anno_log <- eyeball_clust_log %>% column_to_rownames("genes") %>% select("clusters")
 anno_names <- unique(anno_log$clusters)
@@ -310,14 +325,19 @@ pheatmap(top_pseudo_log,
          )
 dev.off()
 ```
-Melt eyeballs for marc (lol)
+
+Below the code is used to melt the the eyeballed clusters where each column is
+a cluster and the rows are filled with genes associated with that cluster.
 
 ```{r}
 dat = eyeball_clust_2[,1:2]
 new_col = "cluster"
 value_var = "genes"
-pseudo_cast <- function(dat, new_col, value_var){
 
+pseudo_cast <- function(dat, new_col, value_var){
+  ### This function takes the "eyeball" clusters and casts them so that
+  ### each column is a cluster with the rows including the genes for each 
+  ### cluster.
 out_list <- list()
 for (col_val in unique(dat[[new_col]])) {
     temp_df <- dat[dat[new_col] == col_val,]
@@ -348,21 +368,29 @@ write.csv(non_log_cast, "data_out/genes_clusters_eyeballed_non_log.csv",row.name
 write.csv(log_cast, "data_out/genes_clusters_eyeballed_log.csv",row.names = F)
 ```
 
-
+The goal here is to find what clusters in tissues are enriched for the "meta"
+clusters we have determined
 
 ```{r}
-cluster_compare_table <- NULL
+options(dplyr.summarise.inform = FALSE)
 
+cluster_compare_table <- NULL
+## The goal of this script is to move through the genes in tissues clusters
+## and determine if a certain "meta-cluster" that was eyeballled before is
+## enriched in a given sample population
 for (tissue_ind in seq_along(list_dat)) {
+  ## Pull out tissue name and the clusters of the tissue
     cur_tis <- names(list_dat[tissue_ind])
     cluster_list <- list_dat[[tissue_ind]]
     for (cluster_ind in seq_along(cluster_list)) {
+      ## Pull out cluster name and the tissues associated with it
         cluster_names <- names(cluster_list[cluster_ind])
         cluster_genes <- cluster_list[[cluster_ind]]
+      ## Group by cluster 
       cluster_vals <- eyeball_clust_log %>%
                 group_by(clusters) %>%
                 mutate(in_clust = genes %in% cluster_genes) %>%
-                summarize(clusters,percent_overlap = in_clust/n()) %>%
+                summarize(clusters,percent_overlap = sum(in_clust)/n()) %>%
                 group_by(clusters) %>%
                 arrange(desc(percent_overlap)) %>%
                 slice_head( n =1)
