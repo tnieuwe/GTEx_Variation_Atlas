@@ -19,7 +19,7 @@ library(tidyverse)
 ```
 tissue_list
 ```{r}
-tiss_list <- read.csv(file = "../../global_in/general_list_test_v8.txt")[,1]
+tiss_list <- read.csv(file = "../../global_in/general_list_test_v8.txt",header = F)[,1]
 drop_tiss <- c("cervix_ectocervix", "cervix_endocervix", "bladder","fallopian_tube")
 tiss_list <- tiss_list[!(tiss_list %in% drop_tiss)]
 ```
