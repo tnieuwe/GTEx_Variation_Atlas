@@ -19,15 +19,13 @@ library(tidyverse)
 ```
 tissue_list
 ```{r}
-tiss_list <- read.csv(file = "../../global_in/general_list_test_v8.txt")[,1]
+tiss_list <- read.csv(file = "../../global_in/general_list_test_v8.txt",header = F)[,1]
 drop_tiss <- c("cervix_ectocervix", "cervix_endocervix", "bladder","fallopian_tube")
 tiss_list <- tiss_list[!(tiss_list %in% drop_tiss)]
 ```
 
 Load in the cluster data 
 ```{r}
-## CURRENT BUG adipose subcutaneous is not in the final table
-## not fixed as of 5/26/2021
 list_dat <- sapply(tiss_list, function(x){
     ## Go through list to load in files
     load_file <-  paste0("../../MARCC output/variance_genes_kendall/kendall-",
