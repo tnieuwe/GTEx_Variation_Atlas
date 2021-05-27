@@ -227,37 +227,6 @@ ordered_cluster <- as.data.frame(pheat_out_log$tree_row$labels[pheat_out_log$tre
 colnames(ordered_cluster) <- "genes"
 write.csv(ordered_cluster, "data_out/ordered_cluster_log_out.csv")
 ```
-SLATED FOR REMOVAL BELOW
-Include eyeball clusters as annotations
-```{r}
-## Read in my first attemp at eyeballing the clsuters this analysis will be dropped
-## in the future
-eyeball_clust <- read.csv("data_in/eyeball_clusters.csv")
-anno_2 <- eyeball_clust %>% column_to_rownames("genes") %>% select("cluster")
-missing_genes <- rownames(top_pseudo)[!(rownames(top_pseudo) %in% rownames(anno_2))]
-missing_genes_df <- data.frame(rep("non_clust",
-                                   length(missing_genes)),
-                               row.names = missing_genes)
-colnames(missing_genes_df) <- colnames(anno_2)
-anno_2 <- rbind(anno_2, missing_genes_df)
-#anno_colors <- list("X Clust" = c("Never X" = colors[2], "In X" = colors[1]))
-anno_names <- unique(anno_2$cluster)
-pre_anno_colors <- viridis::viridis_pal()(length(anno_names))
-names(pre_anno_colors) <- anno_names
-anno_colors <- list("cluster" = pre_anno_colors)
-anno_colors$cluster[names(anno_colors$cluster) == "non_clust" ] <- "white"
-pdf("data_out/inter_cluster_correlation_eyeball.pdf", height = 8, width = 10)
-pheatmap(top_pseudo,
-          fontsize_row = 1.2,
-          fontsize_col = 1.2,
-         annotation_row = anno_2,
-         annotation_col = anno_2,
-         annotation_colors = anno_colors
-         )
-dev.off()
-
-```
-REMOVAL OVER
 
 eyeball attempt 2
 ```{r}
