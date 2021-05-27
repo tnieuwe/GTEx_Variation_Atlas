@@ -434,7 +434,8 @@ for (tissue_ind in seq_along(list_dat)) {
 }
 cluster_composition_table<- as_tibble(cluster_composition_table) %>%
   mutate_at("percent_coverage", as.numeric) %>%
-  rename(cur_tis = "tissue", unique_clust = "meta_clusters")
+  mutate(unique_clust = ifelse(unique_clust == "no_clust", "common_no_cluster", unique_clust)) %>%
+  rename_(tissue = "cur_tis", meta_clusters = "unique_clust")
 
 
 ```
@@ -456,9 +457,9 @@ Create function that generates a plot for a tissue on the percent composition fo
 ```{r}
 ## Continue working on thhis 5/27/2021
 
-tissue_filter <- "artery_coronary"
+tissue_filter <- "brain_nucleus_accumbens__basal_ganglia"
 dat <- cluster_composition_table
-
+summarize_all_dupes = TRUE
 composition_plot <- function(dat, tissue_filter,
                              summarize_unknown = FALSE,
                              summarize_all_dupes = FALSE){
@@ -479,7 +480,7 @@ composition_plot <- function(dat, tissue_filter,
   ## Compress unknowns to make graph more readable
   if (summarize_unknown == TRUE) {
     ## Get the sum of unknown values
-    compress_unknown <- temp_df %>% filter(startsWith(meta_clusters, "unkn")) %>%
+    compress_unknown <- temp_df %>% filter(startsWith(meta_clusters, "unk")) %>%
                           group_by(cluster_names) %>%
                           summarize(tissue, cluster_names, meta_clusters = "compressed_unknown",
                                     percent_coverage= sum(percent_coverage)) %>%
@@ -499,24 +500,34 @@ composition_plot <- function(dat, tissue_filter,
                       unique()
     compress_cont <- temp_df %>% filter(startsWith(meta_clusters, "cont")) %>%
                       group_by(cluster_names) %>%
-                      summarize(tissue, cluster_names, meta_clusters = "contam",
+                      summarize(tissue, cluster_names, meta_clusters = "contamination",
                                 percent_coverage= sum(percent_coverage)) %>%
                       select(tissue, cluster_names, meta_clusters, percent_coverage) %>%
                       unique()
     compress_both <- rbind(compress_immuno, compress_cont)
     temp_df <- temp_df %>% filter(!startsWith(meta_clusters, c("imm")),
-                                              !startsWith(meta_clusters, c("imm", "cont")))
-    temp_df <- rbind(compress_unknown, temp_df)
+                                              !startsWith(meta_clusters, c("cont")))
+    temp_df <- rbind(compress_both, temp_df)
   }
   ## Plot figure
   plot_df <- rbind(temp_df, unique_gene_percent)
   ggplot(data = plot_df, aes(x = cluster_names, y = percent_coverage, fill = meta_clusters)) +
     geom_bar(position= "stack", stat = "identity") +
     viridis::scale_fill_viridis(discrete=TRUE) +
-    labs(title = unique(plot_df$tissue))
+    labs(title = unique(plot_df$tissue)) +
+    theme_classic()
+  }
+
+
+composition_plot(cluster_composition_table, "brain_nucleus_accumbens__basal_ganglia",summarize_all_dupes = TRUE)
+
+pdf(file = "data_out/all_tissue_cluster_composition.pdf", height = 8, width = 10)
+for (tiss in tiss_list) {
+  cur_plot <- composition_plot(cluster_composition_table, tiss,summarize_all_dupes = TRUE)
+  print(cur_plot)
 }
+dev.off()
 
 
-composition_plot(cluster_composition_table, "artery_coronary",summarize_all_dupes = TRUE)
 ```
 
