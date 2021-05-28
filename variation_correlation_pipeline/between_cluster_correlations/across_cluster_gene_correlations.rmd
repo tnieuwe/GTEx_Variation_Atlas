@@ -431,7 +431,8 @@ dat <- cluster_composition_table
 summarize_all_dupes = TRUE
 composition_plot <- function(dat, tissue_filter,
                              summarize_unknown = FALSE,
-                             summarize_all_dupes = FALSE){
+                             summarize_all_dupes = FALSE,
+                             text_size = 15){
   ## If summarize all true, make sure to summarize unkown
   if (summarize_all_dupes == TRUE) {
     summarize_unknown = TRUE
@@ -484,7 +485,8 @@ composition_plot <- function(dat, tissue_filter,
     geom_bar(position= "stack", stat = "identity") +
     viridis::scale_fill_viridis(discrete=TRUE) +
     labs(title = unique(plot_df$tissue)) +
-    theme_classic()
+    theme_classic() +
+    theme(text =  element_text(size=text_size))
   }
 
 
@@ -492,7 +494,10 @@ composition_plot(cluster_composition_table, "brain_nucleus_accumbens__basal_gang
 
 pdf(file = "data_out/all_tissue_cluster_composition.pdf", height = 8, width = 10)
 for (tiss in tiss_list) {
-  cur_plot <- composition_plot(cluster_composition_table, tiss,summarize_all_dupes = TRUE)
+  cur_plot <- composition_plot(cluster_composition_table,
+                               tiss,
+                               summarize_all_dupes = TRUE,
+                               text_size = 18)
   print(cur_plot)
 }
 dev.off()
