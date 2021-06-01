@@ -65,6 +65,7 @@ mccall_analysis_corr_step <- function(tissue,
     out_list[["tissue"]] <- tissue
     out_list[["correlation"]] <- correlation
     out_list[["var_thresh"]] <- variance_thresh
+    out_list[['gene_variance']] <- v
     return(out_list)
     
 }
