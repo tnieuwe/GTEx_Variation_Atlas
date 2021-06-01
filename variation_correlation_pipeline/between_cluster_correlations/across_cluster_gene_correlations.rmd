@@ -505,3 +505,48 @@ dev.off()
 
 ```
 
+sanity check
+```{r}
+results <- lapply(list_dat$adipose_subcutaneous, length)
+mean(unlist(results))
+```
+
+Plot N of existing clusters per list
+```{r}
+plot_genes <- data.frame(as.matrix(unlist(lapply(list_dat, length)))) %>%
+      rownames_to_column('tissue') %>%
+  mutate(tissue = gsub(pattern = '__', '_', tissue))
+
+avg_genes <- lapply(list_dat, function(x){
+  all_clusters <- c()
+  for (col in seq_along(x)) {
+    all_clusters <- append(all_clusters, length(x[[col]]))
+  }
+  round(mean(all_clusters))
+}) 
+
+avg_genes <- data.frame(as.matrix(unlist(avg_genes))) %>%
+      rownames_to_column('tissue') %>%
+  mutate(tissue = gsub(pattern = '__', '_', tissue))
+
+plot_genes <- left_join(plot_genes, avg_genes)
+
+colnames(plot_genes)[2:3] <- c("n_of_clusters", "avg_gene_per_clust")
+
+ggplot(plot_genes, aes(y= tissue, x = n_of_clusters, fill = tissue)) +
+  geom_col(color = "grey40") +
+  theme_classic() +
+  theme(legend.position = "none",text = element_text(size = 15)) +
+  viridis::scale_fill_viridis(discrete = TRUE,option = "C")
+
+ggsave(filename = "data_out/clusters_per_tissue.pdf", width = 8, height = 8)
+
+ggplot(plot_genes, aes(y= tissue, x = avg_gene_per_clust, fill = tissue)) +
+  geom_col(color = "grey40") +
+  theme_classic() +
+  theme(legend.position = "none",text = element_text(size = 15)) +
+  viridis::scale_fill_viridis(discrete = TRUE,option = "C")
+ggsave(filename = "data_out/avg_gene_per_clusts.pdf", width = 8, height = 8)
+
+```
+
