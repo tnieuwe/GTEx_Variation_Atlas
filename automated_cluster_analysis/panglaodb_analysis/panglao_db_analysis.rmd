@@ -1,0 +1,139 @@
+---
+title: "pangloa_analysis"
+author: "Tim Nieuwenhuis"
+date: "6/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tibble)
+library(stringr)
+```
+
+Load in the data
+```{r}
+panglao_dat <- read.table("data_in/PanglaoDB_markers_27_Mar_2020.tsv",
+                          sep = "\t", header = TRUE) %>%
+    filter(str_detect(species, "Hs"))
+key_organs <- read.csv(file = "data_in/ordered_all_tiss_pang_names.csv")
+key_genes <- read.csv(file = "../data_out/labels_and_genes.csv")
+key_master <- read.csv(file = "../data_out/key_table.csv")
+
+
+```
+Making a general list of organs all tissues will be compared to
+```{r}
+generalist_organ <- c("Connective tissue", "Immune system", "Epithelium", "Skeletal muscle")
+generalist_data <- filter(panglao_dat, organ %in% generalist_organ) %>%
+    group_by(organ) %>%
+    count(cell.type)
+
+```
+Join the data together to make pangloa analysis easier
+```{r}
+
+key_organ_prepare <- key_organs %>%
+    select(r_names,panglao_match)
+
+dat_for_analysis <- key_master %>% select(label, r_names) %>%
+            left_join(key_genes, ., by = "label") %>%
+            left_join(key_organ_prepare, by = "r_names") %>%
+            select(label, r_names, panglao_match, genes)
+```
+
+
+```{r}
+### For each cluster find what percentage of the genes fall into what cell types
+
+
+
+## For each gtex tissue
+all_tissues <- unique(dat_for_analysis$r_names)
+panglao_analysis_list <- list()
+for (tiss_ind in seq_along(all_tissues)) {
+
+    cur_tiss <- all_tissues[tiss_ind]
+    tiss_df <- filter(dat_for_analysis, r_names %in% cur_tiss)
+    ## Select out genes
+    temp_pang <- filter(panglao_dat,
+                    organ %in%
+                        append(generalist_organ, tiss_df$panglao_match))
+    ## Make a matrix to fill out with percent cell type
+    temp_matrix <- matrix(nrow = nrow(tiss_df),
+                          ncol = length(unique(temp_pang$cell.type)))
+    cur_cell_types <- unique(temp_pang$cell.type)
+    colnames(temp_matrix) <- cur_cell_types 
+    rownames(temp_matrix) <- tiss_df$label
+    for (clust_ind in seq(nrow(tiss_df))) {
+        ## Get the current cluster
+        cur_row <- tiss_df[clust_ind,]
+        ## Break down the genes
+        cur_genes <- str_split(cur_row$genes, ";")[[1]]
+        
+        
+        for (cell_type_ind in seq_along(cur_cell_types)) {
+            cur_type <- cur_cell_types[cell_type_ind]
+            temp_cell <- filter(temp_pang, `cell.type` == cur_type)
+            cur_prop <- sum(cur_genes %in%
+                    temp_cell$official.gene.symbol)/length(cur_genes)
+           temp_matrix[clust_ind, cell_type_ind] <- round(cur_prop, 4) 
+        }
+        
+    }
+
+    ##Begin transformations on the data
+    pseudo_proportion <- apply(temp_matrix, 1, sum)
+    
+    ## For each generalist get a column
+    temp_generalist_matrix <- NULL
+    for (general_org in generalist_organ) {
+        temp_gen_df <- filter(generalist_data, organ == general_org)
+        gen_mat <- temp_matrix[,colnames(temp_matrix) %in% temp_gen_df$cell.type]
+        if (is.vector(gen_mat) == TRUE) {
+            temp_generalist_matrix <- cbind(temp_generalist_matrix, gen_mat)
+            
+        } else{
+            sum_vals <- apply(gen_mat, 1, sum)
+            temp_generalist_matrix <- cbind(temp_generalist_matrix, sum_vals)
+        }
+    }
+    colnames(temp_generalist_matrix) <- generalist_organ
+    
+    ## Top tissues in order
+     top_cell_types <-  apply(temp_matrix,1, function(x){
+            ## Remove 0s
+            x <- x[x!=0]
+            ## sort row
+            x <- sort(x,decreasing = T)
+            ## paste sorted values
+            paste0(names(x),collapse = "; ")
+        })
+    
+    ## Sum of genes
+    genes_per_cluster <- str_count(tiss_df$genes, ";") + 1
+    
+    temp_matrix <- cbind(temp_generalist_matrix,top_cell_types, genes_per_cluster,temp_matrix)
+    
+    
+    
+    panglao_analysis_list[[cur_tiss]] <- temp_matrix 
+    
+}
+
+##### Things to add
+## [x] total N of genes in a cluster
+## [x] A column summing up generalist tissues
+## [x] A column with the cell types hit in order of most to least
+
+for (ind_to_write in seq_along(panglao_analysis_list)) {
+    cur_tiss <- names(panglao_analysis_list)[[ind_to_write]]
+    cur_mat <- panglao_analysis_list[[ind_to_write]]
+    write.csv(cur_mat, file = paste0("data_out/all_tissue_out/",cur_tiss, "_panglao_analysis.csv"))
+}
+
+
+
+```
+
