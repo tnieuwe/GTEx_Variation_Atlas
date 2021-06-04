@@ -61,36 +61,62 @@ for (tiss_ind in seq_along(all_tissues)) {
                     organ %in%
                         append(generalist_organ, tiss_df$panglao_match))
     ## Make a matrix to fill out with percent cell type
+    ## Double the colnames dimensions to include two columns per cell type
+    ## proportion 
     temp_matrix <- matrix(nrow = nrow(tiss_df),
-                          ncol = length(unique(temp_pang$cell.type)))
+                          ncol = 2 * length(unique(temp_pang$cell.type)))
     cur_cell_types <- unique(temp_pang$cell.type)
-    colnames(temp_matrix) <- cur_cell_types 
+    ## Make new colnames using sapply
+    ## create a vector where we duplicate the names and mark if it is
+    ## proportion column or genes
+    new_colnames <- sapply(cur_cell_types,function(x){
+        reps <- rep(x,2)
+        reps[1] <- paste0(reps[1], " proportion")
+        reps[2] <- paste0(reps[2], " genes")
+        unlist(reps)
+    })
+    ## Flatten sapply out to fit as colnames
+    colnames(temp_matrix) <- as.vector(new_colnames) 
     rownames(temp_matrix) <- tiss_df$label
     for (clust_ind in seq(nrow(tiss_df))) {
         ## Get the current cluster
         cur_row <- tiss_df[clust_ind,]
         ## Break down the genes
         cur_genes <- str_split(cur_row$genes, ";")[[1]]
-        
-        
+        ## Loop along vector of cell types to fill out the temp matrix
         for (cell_type_ind in seq_along(cur_cell_types)) {
+            ## Get current cell type
             cur_type <- cur_cell_types[cell_type_ind]
+            ## Create the odd index which will be used to fill proportion data
+            proportion_ind <- seq(1, ncol(temp_matrix), by = 2)[cell_type_ind]
+            ## Geene index is even
+            gene_ind <-  seq(2, ncol(temp_matrix), by = 2)[cell_type_ind]
             temp_cell <- filter(temp_pang, `cell.type` == cur_type)
             cur_prop <- sum(cur_genes %in%
                     temp_cell$official.gene.symbol)/length(cur_genes)
-           temp_matrix[clust_ind, cell_type_ind] <- round(cur_prop, 4) 
+            ## Get out genes that match and paste them together
+            hit_genes <- cur_genes[cur_genes %in%
+                    temp_cell$official.gene.symbol]
+            hit_genes <- paste0(hit_genes,collapse = "; ")
+            ## This code exists to prevent putting true empty characters into the
+            ## matrix
+            hit_genes <- ifelse(length(hit_genes) == 0, "", hit_genes)
+           temp_matrix[clust_ind, proportion_ind] <- round(cur_prop, 4)
+           temp_matrix[clust_ind, gene_ind] <- hit_genes
         }
         
     }
-
+    numeric_temp_matrix <- temp_matrix[,str_detect(colnames(temp_matrix),pattern = "proportion")]
+    numeric_temp_matrix <- matrix(as.numeric(numeric_temp_matrix),
+                                  ncol = ncol(numeric_temp_matrix))
     ##Begin transformations on the data
-    pseudo_proportion <- apply(temp_matrix, 1, sum)
+    pseudo_proportion <- apply(numeric_temp_matrix, 1, sum)
     
     ## For each generalist get a column
     temp_generalist_matrix <- NULL
     for (general_org in generalist_organ) {
         temp_gen_df <- filter(generalist_data, organ == general_org)
-        gen_mat <- temp_matrix[,colnames(temp_matrix) %in% temp_gen_df$cell.type]
+        gen_mat <- numeric_temp_matrix[,colnames(numeric_temp_matrix) %in% temp_gen_df$cell.type]
         if (is.vector(gen_mat) == TRUE) {
             temp_generalist_matrix <- cbind(temp_generalist_matrix, gen_mat)
             
@@ -102,7 +128,7 @@ for (tiss_ind in seq_along(all_tissues)) {
     colnames(temp_generalist_matrix) <- generalist_organ
     
     ## Top tissues in order
-     top_cell_types <-  apply(temp_matrix,1, function(x){
+     top_cell_types <-  apply(numeric_temp_matrix,1, function(x){
             ## Remove 0s
             x <- x[x!=0]
             ## sort row
@@ -114,9 +140,12 @@ for (tiss_ind in seq_along(all_tissues)) {
     ## Sum of genes
     genes_per_cluster <- str_count(tiss_df$genes, ";") + 1
     
-    temp_matrix <- cbind(temp_generalist_matrix,top_cell_types, genes_per_cluster,temp_matrix)
+    ## Join all the additional columns together
+    temp_matrix <- cbind(temp_generalist_matrix,
+                         top_cell_types,
+                         genes_per_cluster,temp_matrix)
     
-    
+    ## Maybe we should reorder columns to the specific pangloa type?
     
     panglao_analysis_list[[cur_tiss]] <- temp_matrix 
     
@@ -126,6 +155,9 @@ for (tiss_ind in seq_along(all_tissues)) {
 ## [x] total N of genes in a cluster
 ## [x] A column summing up generalist tissues
 ## [x] A column with the cell types hit in order of most to least
+## [x] Add column behind a cell type match with names of hit genes (multiple column)
+## [] Sum of genes found by panglao per cluster (new single column)
+
 
 for (ind_to_write in seq_along(panglao_analysis_list)) {
     cur_tiss <- names(panglao_analysis_list)[[ind_to_write]]
