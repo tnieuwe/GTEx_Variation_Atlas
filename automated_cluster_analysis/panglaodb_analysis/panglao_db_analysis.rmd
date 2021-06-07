@@ -108,7 +108,8 @@ for (tiss_ind in seq_along(all_tissues)) {
     }
     numeric_temp_matrix <- temp_matrix[,str_detect(colnames(temp_matrix),pattern = "proportion")]
     numeric_temp_matrix <- matrix(as.numeric(numeric_temp_matrix),
-                                  ncol = ncol(numeric_temp_matrix))
+                                  ncol = ncol(numeric_temp_matrix),
+                                  dimnames = list(NULL, colnames(numeric_temp_matrix)))
     ##Begin transformations on the data
     pseudo_proportion <- apply(numeric_temp_matrix, 1, sum)
     
@@ -116,7 +117,10 @@ for (tiss_ind in seq_along(all_tissues)) {
     temp_generalist_matrix <- NULL
     for (general_org in generalist_organ) {
         temp_gen_df <- filter(generalist_data, organ == general_org)
-        gen_mat <- numeric_temp_matrix[,colnames(numeric_temp_matrix) %in% temp_gen_df$cell.type]
+        ## Remove proportion from colnames
+        temp_colnames <- str_sub(colnames(numeric_temp_matrix), 1,
+                                 nchar(colnames(numeric_temp_matrix)) -11)
+        gen_mat <- numeric_temp_matrix[,temp_colnames %in% temp_gen_df$cell.type]
         if (is.vector(gen_mat) == TRUE) {
             temp_generalist_matrix <- cbind(temp_generalist_matrix, gen_mat)
             
@@ -137,12 +141,20 @@ for (tiss_ind in seq_along(all_tissues)) {
             paste0(names(x),collapse = "; ")
         })
     
-    ## Sum of genes
+    ## Sum of genes in cluster
     genes_per_cluster <- str_count(tiss_df$genes, ";") + 1
+    
+    ## Sum of genes found by panglao in cluster
+    char_temp_matrix <- temp_matrix[,str_detect(colnames(temp_matrix),pattern = "gene")]
+    n_of_genes_in_pang <-  apply(char_temp_matrix, 1, function(x){
+            x <- x[x!=""]
+            out <- str_count(x, ";") + str_detect(x, "[:alnum:]") 
+            sum(out)
+        })
     
     ## Join all the additional columns together
     temp_matrix <- cbind(temp_generalist_matrix,
-                         top_cell_types,
+                         top_cell_types,n_of_genes_in_pang,
                          genes_per_cluster,temp_matrix)
     
     ## Maybe we should reorder columns to the specific pangloa type?
@@ -156,7 +168,7 @@ for (tiss_ind in seq_along(all_tissues)) {
 ## [x] A column summing up generalist tissues
 ## [x] A column with the cell types hit in order of most to least
 ## [x] Add column behind a cell type match with names of hit genes (multiple column)
-## [] Sum of genes found by panglao per cluster (new single column)
+## [x] Sum of genes found by panglao per cluster (new single column)
 
 
 for (ind_to_write in seq_along(panglao_analysis_list)) {
