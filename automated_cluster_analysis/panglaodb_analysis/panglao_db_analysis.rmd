@@ -26,9 +26,9 @@ key_master <- read.csv(file = "../data_out/key_table.csv")
 Making a general list of organs all tissues will be compared to
 ```{r}
 generalist_organ <- c("Connective tissue", "Immune system", "Epithelium", "Skeletal muscle")
-generalist_data <- filter(panglao_dat, organ %in% generalist_organ) %>%
-    group_by(organ) %>%
-    count(cell.type)
+# generalist_data <- filter(panglao_dat, organ %in% generalist_organ) %>%
+#     group_by(organ) %>%
+#     count(cell.type)
 
 ```
 Join the data together to make pangloa analysis easier
@@ -59,7 +59,7 @@ for (tiss_ind in seq_along(all_tissues)) {
     ## Select out genes
     temp_pang <- filter(panglao_dat,
                     organ %in%
-                        append(generalist_organ, tiss_df$panglao_match))
+                        append(generalist_organ, unique(tiss_df$panglao_match)))
     ## Make a matrix to fill out with percent cell type
     ## Double the colnames dimensions to include two columns per cell type
     ## proportion 
@@ -115,7 +115,12 @@ for (tiss_ind in seq_along(all_tissues)) {
     
     ## For each generalist get a column
     temp_generalist_matrix <- NULL
-    for (general_org in generalist_organ) {
+    generalist_org_and_specific <- unique(append(tiss_df$panglao_match, generalist_organ))
+    generalist_data <- filter(panglao_dat, organ %in% generalist_org_and_specific) %>%
+        group_by(organ) %>%
+        count(cell.type)
+    
+    for (general_org in generalist_org_and_specific) {
         temp_gen_df <- filter(generalist_data, organ == general_org)
         ## Remove proportion from colnames
         temp_colnames <- str_sub(colnames(numeric_temp_matrix), 1,
@@ -129,7 +134,7 @@ for (tiss_ind in seq_along(all_tissues)) {
             temp_generalist_matrix <- cbind(temp_generalist_matrix, sum_vals)
         }
     }
-    colnames(temp_generalist_matrix) <- generalist_organ
+    colnames(temp_generalist_matrix) <- generalist_org_and_specific
     
     ## Top tissues in order
      top_cell_types <-  apply(numeric_temp_matrix,1, function(x){
@@ -169,6 +174,8 @@ for (tiss_ind in seq_along(all_tissues)) {
 ## [x] A column with the cell types hit in order of most to least
 ## [x] Add column behind a cell type match with names of hit genes (multiple column)
 ## [x] Sum of genes found by panglao per cluster (new single column)
+## [x] Add a column that gets the proportion of the non generalist tissue
+## [] add a column that counts how many redundant genes there are
 
 
 for (ind_to_write in seq_along(panglao_analysis_list)) {
