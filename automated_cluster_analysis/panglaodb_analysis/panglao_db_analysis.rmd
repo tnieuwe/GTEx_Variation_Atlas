@@ -157,10 +157,20 @@ for (tiss_ind in seq_along(all_tissues)) {
             sum(out)
         })
     
+    show_up_more_than_once <-  apply(char_temp_matrix, 1, function(x){
+            x <- x[x!=""]
+            all_x <- paste0(x,collapse = "; ")
+            all_split <- str_split(all_x,pattern = "; ")
+            tab_dat <- table(all_split)
+            tab_dat <- tab_dat[tab_dat > 1]
+            length(tab_dat)
+            #sum(tab_dat)
+        })
+    
     ## Join all the additional columns together
     temp_matrix <- cbind(temp_generalist_matrix,
                          top_cell_types,n_of_genes_in_pang,
-                         genes_per_cluster,temp_matrix)
+                         genes_per_cluster,show_up_more_than_once, temp_matrix)
     
     ## Maybe we should reorder columns to the specific pangloa type?
     
@@ -175,7 +185,7 @@ for (tiss_ind in seq_along(all_tissues)) {
 ## [x] Add column behind a cell type match with names of hit genes (multiple column)
 ## [x] Sum of genes found by panglao per cluster (new single column)
 ## [x] Add a column that gets the proportion of the non generalist tissue
-## [] add a column that counts how many redundant genes there are
+## [x] add a column that counts how many redundant genes there are
 
 
 for (ind_to_write in seq_along(panglao_analysis_list)) {
