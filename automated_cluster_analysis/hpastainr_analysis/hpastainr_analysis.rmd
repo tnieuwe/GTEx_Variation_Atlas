@@ -1,0 +1,20 @@
+---
+title: "hpastainr_analysis"
+author: "Tim Nieuwenhuis"
+date: "6/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(HPAStainR)
+library(dplyr)
+library(tidyr)
+```
+
+Load in data
+
+```{r}
+clust_genes <- read.csv(file = "../data_out/labels_and_genes.csv")
+```
+
