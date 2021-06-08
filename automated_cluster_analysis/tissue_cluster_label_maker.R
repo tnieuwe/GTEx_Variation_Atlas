@@ -4,7 +4,8 @@
 ## Load packages
 library(stringr)
 library(dplyr)
-
+library(tibble)
+library(tidyr)
 ## load data
 
 ## Tissue dictionary
@@ -85,9 +86,28 @@ for (ind in seq_along(pre_df)) {
 }
 
 key_table <- key_table %>% as.data.frame() %>%
-    rename(cur_tiss = "r_names", cur_clust = "cluster") %>%
+    rename(r_names = "cur_tiss", cluster = "cur_clust") %>%
     left_join(tiss_dict)
 final_key_table <- key_table %>%
     mutate(label = str_replace(paste(abrreviated, cluster,sep  = "_"), "[.]", "_")) %>%
-    select(label, abrreviated, cluster, r_names, official_name) 
-write.csv(final_key_table, file = "automated_cluster_analysis/data_out/gtex_tiss_clust_key_table.csv",row.names = F)
+    select(label, abrreviated, cluster, r_names, official_name)
+## Write the key table output
+write.csv(final_key_table,
+          file = "automated_cluster_analysis/data_out/gtex_tiss_clust_key_table.csv",row.names = F)
+
+## Make a final output including the genes pasted together
+genes_per_group <- lapply(list_dat, function(x){
+    lapply(x, function(y){
+        paste(y,collapse = ";")
+    })
+})
+gene_group_df <- (as.data.frame((unlist(genes_per_group)))) %>%
+    rownames_to_column("label") %>%
+    rename(genes = "(unlist(genes_per_group))") %>%
+    mutate(label = str_replace(label, "[.]", ";")) %>%
+    separate(col = "label", into = c("r_names", "cluster"), sep = ";") %>%
+    left_join(final_key_table, ., by = c("r_names", "cluster")) %>%
+    select("label", "genes")
+write.csv(gene_group_df,
+            file = "automated_cluster_analysis/data_out/labels_and_genes.csv",
+            row.names = FALSE,quote = FALSE)    
