@@ -194,7 +194,13 @@ for (ind_to_write in seq_along(panglao_analysis_list)) {
     write.csv(cur_mat, file = paste0("data_out/all_tissue_out/",cur_tiss, "_panglao_analysis.csv"))
 }
 
+```
 
+Output cells in tissues
+```{r}
+cells_in_tissues <- panglao_dat %>% group_by(organ, cell.type) %>%
+        summarize(n_of_genes = n())
 
+write.csv(cells_in_tissues, "data_out/cells_in_tissues.csv", row.names = FALSE)
 ```
 
