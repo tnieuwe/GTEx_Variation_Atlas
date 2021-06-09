@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(HPAStainR)
 library(dplyr)
 library(tidyr)
+library(hpar)
+library(stringr)
 ```
 
 Load in data
@@ -17,4 +19,45 @@ Load in data
 ```{r}
 clust_genes <- read.csv(file = "../data_out/labels_and_genes.csv")
 ```
+
+Load in hpar data
+```{r}
+data("hpaNormalTissue")
+
+```
+
+
+This is the HPAStainR loop it should only be rarely ran as it is not optimized for this type of analysis.
+Later analyses will just load the output rda file from t his analysis.
+```{r}
+
+clust_list <- as.list(str_split(clust_genes[,2], ";"))
+names(clust_list) <- clust_genes[,1]
+
+all_stainr <-  lapply(clust_list, function(x) {
+      #hpa_res <- HPAStainR(gene_list = x, hpa_dat = hpaNormalTissue,cancer_analysis = "normal")
+      tryCatch(assign("hpa_res", HPAStainR(gene_list = x, hpa_dat = hpaNormalTissue,cancer_analysis = "normal")),
+               error = browser)
+      if (!("detected_proteins" %in% colnames(hpa_res))) {
+         return(NA)
+      }
+      hpa_res <- filter(hpa_res, !is.na(detected_proteins))
+      return(hpa_res)
+    })
+
+
+
+x = c("MTND1P23","MTND2P28","MTCO1P12",
+     "MTCO2P12","MTATP8P1","MTATP6P1","MTCO3P12",
+     "RP11-174G17.3","BCYRN1","SERBP1P3","RPL7P18","MTND4P12","MTRNR2L8","MTCO1P40","MT-CO1","MT-TS1","MT-ND4L","MT-ND6","MT-TE")
+
+save(all_stainr,file = "data_out/hpastainr_analysis_uncleaned.rda")
+
+```
+
+
+```{r}
+load(file = "data_out/hpastainr_analysis_uncleaned.rda")
+```
+
 
