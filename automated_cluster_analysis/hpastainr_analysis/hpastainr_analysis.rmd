@@ -53,11 +53,84 @@ x = c("MTND1P23","MTND2P28","MTCO1P12",
 
 save(all_stainr,file = "data_out/hpastainr_analysis_uncleaned.rda")
 
+all_hpa_tiss <- unique(hpaNormalTissue$Tissue)
+
+all_hpa_tiss <- str_to_upper(unique(str_trim(gsub("[1-9]", "", all_hpa_tiss))))
+
+write.csv(all_hpa_tiss, "data_out/hpa_tissues.csv")
 ```
+
+Load files for table creation
+```{r}
+load(file = "data_out/hpastainr_analysis_uncleaned.rda")
+hpa_key <- read.csv("data_in/ordered_all_tiss_hpa_names.csv")
+master_key <- read.csv("../data_out/key_table.csv")
+```
+Clean up dataframes for joining
+```{r}
+hpa_4_loop  <- left_join(master_key, hpa_key) %>%
+    select(label, hpa_match)
+```
+
 
 
 ```{r}
-load(file = "data_out/hpastainr_analysis_uncleaned.rda")
-```
+### Output percent stainign score for each cluster for each associated tissue
+r_names_b_ <- master_key %>% select(r_names, label)
+## Make a list of data based on r_names and use start with to subset data frame
+## in second level of the nested for loop
 
+### Output percent stainign score for each cluster for each associated tissue
+r_names_n_label <- master_key %>% select(r_names, label)
+r_names <- unique(r_names_n_label$r_names)
+## Make a list of data based on r_names and use start with to subset data frame
+## in second level of the nested for loop
+
+## Initiate list
+final_list <- list()
+## For different tissues
+for (tiss_ind in seq_along(r_names)) {
+  ## Get the r name
+  cur_name <- r_names[tiss_ind]
+  cur_label_df <- r_names_n_label %>% filter(r_names %in% cur_name)
+  ## Get cluster vector
+  label_vect <- cur_label_df$label
+  new_table <- NULL
+  for (label_ind in seq_along(label_vect)) {
+    ## Pull HPAStainR tables made with specific clusters
+    cur_label <- label_vect[label_ind]
+    cur_table <- (all_stainr[[which(names(all_stainr) %in% cur_label)]])
+    ## Catch NA tables
+    if (class(cur_table) == "logical") {
+      next
+    }
+    ## Catch tables that are empty
+    if (nrow(cur_table) == 0) {
+      next
+    }
+    ## Split first column to filter data
+    cur_table <- cur_table %>% separate(cell_type,sep = " - ", c("tissue", "cell_type"))
+    ## get the best matching HPA tissue
+    hpa_current <- hpa_4_loop %>% filter(label == cur_label)
+    new_row <- filter(cur_table,tissue %in% hpa_current) %>% select(cell_type, staining_score, p_val, detected_proteins)
+    ## Catch rowless
+    if (nrow(new_row) == 0) {
+      next
+    }
+    ## Make table
+    new_row <- cbind(cur_label, new_row)
+    new_table <- rbind(new_table, new_row)
+  }
+  ## Put in list
+  final_list[[cur_name]] <- new_table
+}
+
+
+for (csv_ind in seq_along(final_list)) {
+  temp_name <- names(final_list)[csv_ind]
+  write.csv(x = final_list[[csv_ind]],
+            file = paste0("data_out/",temp_name,"_hpastainr_results.csv"),
+            row.names = FALSE)
+}
+```
 
