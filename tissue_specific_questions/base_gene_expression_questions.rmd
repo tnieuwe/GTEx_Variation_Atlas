@@ -1,0 +1,98 @@
+---
+title: "question_maker"
+author: "Tim Nieuwenhuis"
+date: "6/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(tidyverse)
+source("../global_in/general_scripts.R")
+```
+
+Select items of interest
+```{r}
+## Tissue R name
+tiss <- "lung"
+genes <- c("SAA1", "SAA2")
+```
+
+load in data
+```{r}
+
+## Load SUBJ data
+phen_dat <- read.csv("../global_in/gtex_phenotypes_v8.csv")
+## Load samp data.
+samp_dat <- read.delim("../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt", fill=T,
+                      stringsAsFactors=FALSE, sep="\t", header=T)
+## Load common subj_dat
+subj_dat <- read.delim("../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt", fill=T,
+                      stringsAsFactors=FALSE, sep="\t", header=T)
+## Load keys 
+key_dat <- read.csv("../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+
+## Load sample data
+
+Clean and join data
+
+
+Load and join each tissue
+```{r}
+cur_keys <- key_dat %>% filter(r_names %in% tiss) %>% select(abrreviated, r_names, official_name) %>%
+    unique()
+cur_keys <- cur_keys[order(tiss, cur_keys$r_names),]
+
+
+final_gene_dat <- NULL
+for (tiss_ind in seq_along(tiss)) {
+    tissue <- tiss[tiss_ind]
+    abbrev <- cur_keys$abrreviated[tiss_ind]
+    tiss_path <- paste0("../Setup Code/output/",tissue,"-vsd-mean-filtered.rda")
+    load(tiss_path)
+    if(!all(gtabMeanFiltered$gene_id == rownames(assay(generalVSDMeanFiltered)))){
+        stop()
+    }
+    ind <- gtabMeanFiltered$gene_name %in% genes
+    final_gtab <- gtabMeanFiltered[ind,]
+    gene_dat <- t(assay(generalVSDMeanFiltered)[ind,])
+    if (length(tiss) > 1) {
+        colnames(gene_dat) <- paste(final_gtab$gene_name, abbrev, sep = "_")
+        gene_dat <- rownames_to_column(as.data.frame(gene_dat), var = paste0("SAMPID", "_", abbrev)) %>%
+        mutate(SUBJID = GTEx_SAMPID_to_SUBJIUD(!!as.symbol(paste0("SAMPID", "_", abbrev))))
+    if (is.null(final_gene_dat)) {
+        final_gene_dat <- gene_dat
+        next
+        }
+    final_gene_dat <- full_join(final_gene_dat, gene_dat, by = "SUBJID")
+    } else{
+        colnames(gene_dat) <-final_gtab$gene_name
+        gene_dat <- rownames_to_column(as.data.frame(gene_dat), var = "SAMPID")
+        final_gene_dat <- gene_dat
+    }
+
+}
+gene_dat <- final_gene_dat
+
+```
+
+
+
+```{r}
+
+## Add phen dat
+gene_dat <- left_join(gene_dat, phen_dat, by = "SUBJID")
+## Samp dat
+if (length(tiss) ==1 ) {
+    gene_dat <- left_join(gene_dat, samp_dat, by = "SAMPID")
+}
+
+```
+Answer questions below
+```{r}
+
+```
+
