@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-source("../../global_in/general_scripts.R")
+source("../global_in/general_scripts.R")
 ```
 
 Select items of interest
