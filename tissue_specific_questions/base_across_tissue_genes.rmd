@@ -66,9 +66,7 @@ list_dat <- sapply(tiss_list, function(x){
 
 Genes of interest
 ```{r}
-
-clusts <- read.csv("../../MARCC output/variance_genes_kendall/kendall-whole_blood-gene-clusters-high-variance.csv")
-genes_o_int <- clusts[clusts[,"B.1"] != "", "B.1"]
+genes_o_int <- c("SAA1", "SAA2")
 ```
 
 Get genes most commonly shared
@@ -110,23 +108,6 @@ cluster_enrichment<- lapply(list_dat, function(x){
 top_clusters <- sort(unlist(cluster_enrichment),decreasing = T)
 
 top_clusters_filt <- as.data.frame(top_clusters) %>% filter(top_clusters >0)
-top_clusters_filt
 
-```
-Get the genes from the top clusters
-```{r}
-clusters_out <- NULL
-for (cluster in rownames(head(top_clusters_filt,5))) {
-    parts <- unlist(str_split(cluster, "[.]"))
-    tissue <- parts[1]
-    if (length(parts) == 3) {
-        cluster <- paste(parts[2], parts[3],sep = ".")
-    } else{
-         cluster <- parts[2]
-    }
-    cur_genes <- list_dat[[tissue]][[cluster]]
-    clusters_out[[paste(tissue, cluster, sep = ".")]] <- cur_genes
-}
-clusters_out
 ```
 
