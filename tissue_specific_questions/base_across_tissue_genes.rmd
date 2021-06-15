@@ -111,3 +111,19 @@ top_clusters_filt <- as.data.frame(top_clusters) %>% filter(top_clusters >0)
 
 ```
 
+Get the genes from the top clusters
+```{r}
+clusters_out <- NULL
+for (cluster in rownames(head(top_clusters_filt,5))) {
+    parts <- unlist(str_split(cluster, "[.]"))
+    tissue <- parts[1]
+    if (length(parts) == 3) {
+        cluster <- paste(parts[2], parts[3],sep = ".")
+    } else{
+         cluster <- parts[2]
+    }
+    cur_genes <- list_dat[[tissue]][[cluster]]
+    clusters_out[[paste(tissue, cluster, sep = ".")]] <- cur_genes
+}
+clusters_out
+```
