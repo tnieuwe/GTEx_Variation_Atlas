@@ -26,8 +26,8 @@ This pipeline does the following:
 
 *gen_script_gtex_v8_2*:
 
-2. Normalizes the data using DESEq2's VST() function before filtering on a threshold
-of >5 normalized counts.
+2. Normalizes the data using DESEq2's VST() function before filtering genes on a
+threshold that rowMeans() should be >5 normalized counts.
 
 *gen_script_gtex_v8_3_v2*:
 
@@ -50,5 +50,5 @@ threshold of correlation, and new agglometric clustering method.
 
 **mccall_profile_maker.R**:
 
-8. Using the gens from each cluster, generate a Z-score of samples assocaition with 
+8. Using the genes from each cluster, generate a Z-score of samples association with 
 each cluster using the normalized count data.
