@@ -55,20 +55,20 @@ load("output/gtex-gene-counts-v8.rda")
 #                 "skin_sun_exposed",
 #                 "prostate",
 #                 "brain_spinal_cord__cervical_c_1",
-#                 "colon_sigmoid")
+#                 "colon_sigmoid",
+#                 "whole_blood")
 # tissue_names = c("Lung",
 #                  "Artery - Coronary",
 #                  "Kidney - Cortex",
 #                  "Skin - Sun Exposed (Lower leg)",
 #                  "Prostate",
 #                  "Brain - Spinal cord (cervical c-1)",
-#                  "Colon - Sigmoid")
+#                  "Colon - Sigmoid",
+#                  "Whole Blood)
 
 
-tissue_list = c("brain_spinal_cord__cervical_c_1",
-                "colon_sigmoid")
-tissue_names = c("Brain - Spinal cord (cervical c-1)",
-                 "Colon - Sigmoid")
+tissue_list = c("whole_blood")
+tissue_names = c("Whole Blood")
 
 for (j in seq(length(tissue_list))) {
     cur_tiss <- tissue_list[j]
