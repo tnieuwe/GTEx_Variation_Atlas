@@ -1,0 +1,285 @@
+---
+title: "Ischemic Time compared to clusters"
+author: "Tim Nieuwenhuis"
+date: "6/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+
+## Load functions
+source("../../global_in/general_scripts.R")
+
+## Master table for tissues
+master_key_table <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+
+## get sample data and subject data
+subj_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- read.table(file = "../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt",
+                       sep = "\t", fill = TRUE, header = TRUE)
+
+```
+
+
+```{r}
+### For each cluster find what percentage of the genes fall into what cell types
+
+
+### Load in the data
+## For each gtex tissue
+all_tissues <- unique(master_key_table$r_names)
+
+tissue_dat_list <- list()
+for (tiss_ind in seq_along(all_tissues)) {
+    tiss_list_out <- list()
+    cur_tiss <- all_tissues[tiss_ind]
+    tiss_df <- filter(master_key_table, r_names %in% cur_tiss)
+
+    gene_dat <- read.csv(paste0("../../MARCC output/",
+                     "variance_genes_kendall/kendall-",
+                     cur_tiss,"-gene-clusters-high-variance.csv"))
+    
+    zscore_dat <- read.csv(paste0("../../MARCC output/",
+                                      "variance_profiles_kendall/kendall-",
+                                      cur_tiss,"-cluster-profiles.csv"))
+    
+    tiss_list_out[["gene_dat"]] <- gene_dat
+    tiss_list_out[["zscore_dat"]] <- zscore_dat
+    tissue_dat_list[[cur_tiss]] <- tiss_list_out
+    
+}
+
+
+```
+
+Go through each tissue and do analysis
+```{r}
+
+ischemic_sample_dat <- samp_dat %>% select(SAMPID, SMTSISCH)
+ischemic_subj_dat <- subj_dat %>% select(SUBJID, TRISCHD)
+## For each tissue
+cor_table <- NULL
+for (tiss_ind in seq_along(tissue_dat_list)) {
+    tissue <- names(tissue_dat_list)[[tiss_ind]]
+    zscore_dat <- tissue_dat_list[[tissue]][["zscore_dat"]]
+    colnames(zscore_dat)[1] <- "SAMPID"
+    zscore_dat <- zscore_dat %>%
+        mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
+    joined_dat <- left_join(zscore_dat, ischemic_subj_dat)
+    numeric_ind <- sapply(joined_dat, function(x){is.numeric(x)})
+    trisch_ind <- colnames(joined_dat)  == "TRISCHD"
+    numeric_dat <- joined_dat[,numeric_ind & !trisch_ind]
+    for ( cur_col_ind in seq(ncol(numeric_dat))) {
+        cluster <- colnames(numeric_dat)[cur_col_ind]
+        new_row <- broom::tidy(cor.test(joined_dat$TRISCHD, numeric_dat[,cur_col_ind]))
+        new_row <- cbind(tissue, cluster, new_row)
+        cor_table <- rbind(cor_table, new_row)
+    }
+}
+
+cor_table$p.adj <- p.adjust(cor_table$p.value,method = "holm")
+
+cor_table <- arrange(cor_table, (p.adj))
+
+sum(cor_table$p.adj < 0.05) /nrow(cor_table)
+write.csv(cor_table, file = "data_out/all_ischemic_correlations.csv",row.names = F)
+```
+
+```{r}
+cor_sig <- filter(cor_table, p.adj < 0.05) %>%
+    mutate(cluster_dash = str_replace(cluster, "[.]", "-"))
+
+isch_genes <- c()
+for (sig_cor in seq(nrow(cor_sig))) {
+    cur_tiss <- cor_sig[sig_cor, "tissue"]
+    cur_clust <- cor_sig[sig_cor, "cluster"]
+    new_genes <- tissue_dat_list[[cur_tiss]][["gene_dat"]][,cur_clust]
+    isch_genes <- append(isch_genes, new_genes)
+}
+
+isch_table <- as.data.frame(table(isch_genes)) %>% arrange(desc(Freq)) %>%
+    filter(isch_genes != "") 
+write.csv(isch_table, file = "data_out/top_ischemic_genes.csv",row.names = F)
+```
+
+
+Subset the pseudo correlation on common sig genes and se if they cluster together
+or separately 
+```{r}
+pseudo_cor <- read.csv(file = "../../variation_correlation_pipeline/between_cluster_correlations/data_out/pseudo_correlation_matrix.csv",row.names = 1)
+```
+
+```{r}
+
+thresh <- .95
+## Limit to top 95% genes
+table_95 <- isch_table %>% filter(Freq > quantile(isch_table$Freq, thresh))
+
+ind_95 <- rownames(pseudo_cor) %in% table_95$isch_genes
+pseudo_95 <- pseudo_cor[ind_95,ind_95]
+pseudo_log_95 <- log2(pseudo_95 + 1)
+pdf(file = paste0("data_out/quantile_", thresh,"_ischemic_genes.pdf"), width = 7, height = 5)
+pheatmap::pheatmap(pseudo_95,fontsize = 3,border_color = NA)
+dev.off()
+
+pdf(file = paste0("data_out/quantile_", thresh,"_ischemic_genes_log2.pdf"), width = 7, height = 5)
+pheatmap::pheatmap(pseudo_log_95,fontsize = 4,border_color = NA)
+dev.off()
+```
+Turn pseudo-log into pseudo-proportion
+```{r}
+
+pseudo_prop <- pseudo_95
+
+rownames(pseudo_prop) <- str_replace(rownames(pseudo_prop), "-", ".")
+
+horizontal_vals <- apply(pseudo_95, MARGIN = 2, max)
+
+for (row_ind in seq(nrow(pseudo_prop))) {
+    row_gene <- rownames(pseudo_prop)[row_ind]
+    for (col_ind in seq(ncol(pseudo_prop))) {
+       col_gene <- colnames(pseudo_prop)[col_ind] 
+       if (horizontal_vals[row_gene] >= horizontal_vals[col_gene]) {
+           min_val <- horizontal_vals[col_gene]
+       } else{
+           min_val <- horizontal_vals[row_gene]
+       }
+       pseudo_prop[row_ind, col_ind] <- pseudo_prop[row_ind, col_ind]/min_val
+        
+    }
+    
+}
+
+
+
+pdf(file = paste0("data_out/quantile_", thresh,"_ischemic_genes_proportion.pdf"), width = 7, height = 5)
+pheatmap::pheatmap(pseudo_prop,fontsize = 3,border_color = NA)
+dev.off()
+
+```
+
+
+
+
+Testing getgene length and gc content
+```{r}
+
+gtab <- read.csv("../../global_in/gtab.csv") %>%
+    mutate(gene_id_clean = gsub("[.].*",replacement = "",gene_id))
+
+current_genes <- filter(gtab, gene_name %in% row.names(pseudo_95)) %>%
+    mutate(gene_id_clean = gsub("[.].*",replacement = "",gene_id))
+
+library(EDASeq)
+gclength <- getGeneLengthAndGCContent(current_genes$gene_id_clean,org = "hsa") %>%
+    as.data.frame() %>%
+    rownames_to_column("gene_id_clean")
+
+gtab_gclength <- left_join(current_genes, gclength)
+
+
+hist(gtab_gclength$length)
+hist(gtab_gclength$gc)
+```
+
+## Goal find tissues that have >2 cluster types
+
+Cluster markers
+```{r}
+blood <- c("HBB")
+fosb_mark <- c("FOSB")
+adam <- "ADAMTS4"
+saa <- "SAA1"
+
+all_genes <- tissue_dat_list$adipose_subcutaneous$gene_dat %>% gather() %>%
+    filter(key != "X") %>%
+    mutate(in_group = case_when(
+        value == blood ~ "blood",
+        value == fosb_mark ~ "fosb",
+        value == adam ~ "adam",
+        value == saa ~ "SAA1",
+        TRUE ~ "No clust"
+    )) 
+pre_clusts <- all_genes %>% select(key, in_group) %>%
+    unique()
+
+remove_dupe_ind <- !((duplicated(pre_clusts$key, fromLast = TRUE) | duplicated(pre_clusts$key)) & pre_clusts$in_group == "No clust")
+
+clusts_labeled <- pre_clusts[remove_dupe_ind,] %>% left_join(x = select(all_genes, key, value), y = ., by = "key") %>%
+    filter(value != "") %>%
+    rename(value = "gene_name")
+
+prepped_genes <- left_join(clusts_labeled, gtab)
+
+gclength_genes <- getGeneLengthAndGCContent(prepped_genes$gene_id_clean,org = "hsa") %>%
+    as.data.frame() %>%
+    rownames_to_column("gene_id_clean") %>%
+    left_join(prepped_genes, y=.)
+
+```
+
+Plot GC content and length distributions
+```{r}
+ggplot(gclength_genes, aes(gc, color = in_group)) +
+    geom_histogram()
+
+
+ggplot(gclength_genes, aes(length, color = in_group)) +
+    geom_histogram()
+```
+
+
+```{r}
+pre_plot <- NULL
+
+for (tiss_ind in seq_along(tissue_dat_list)) {
+    all_genes <- tissue_dat_list[[tiss_ind]][["gene_dat"]] %>% gather() %>%
+        filter(key != "X") %>%
+        mutate(in_group = case_when(
+            value == blood ~ "blood",
+            value == fosb_mark ~ "fosb",
+            value == adam ~ "adam",
+            value == saa ~ "SAA1",
+            TRUE ~ "No clust"
+        )) 
+    pre_clusts <- all_genes %>% select(key, in_group) %>%
+        unique()
+    
+    remove_dupe_ind <- !((duplicated(pre_clusts$key, fromLast = TRUE) | duplicated(pre_clusts$key)) & pre_clusts$in_group == "No clust")
+    
+    clusts_labeled <- pre_clusts[remove_dupe_ind,] %>% left_join(x = select(all_genes, key, value), y = ., by = "key") %>%
+        filter(value != "") %>%
+        rename(value = "gene_name")
+    
+    prepped_genes <- left_join(clusts_labeled, gtab)
+    prepped_genes$tissue <- names(tissue_dat_list)[tiss_ind]
+    pre_plot <- rbind(pre_plot, prepped_genes)
+    
+}
+
+uni_ens <- unique(pre_plot$gene_id_clean)
+
+gclength_genes <- getGeneLengthAndGCContent(uni_ens,org = "hsa") %>%
+    as.data.frame() %>%
+    rownames_to_column("gene_id_clean") %>%
+    left_join(pre_plot, y=.)
+```
+```{r}
+ggplot(gclength_genes, aes(gc, color = in_group)) +
+    geom_density()
+
+ggplot(gclength_genes, aes(log2(length), color = in_group)) +
+    geom_density()
+```
+
+It doesn't appear that ADAMST4, Blood, FOSB, or SAA1 clusters are associated
+with GC and gene length associated degredation during ischemic time
