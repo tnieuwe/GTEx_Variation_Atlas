@@ -1,0 +1,15 @@
+---
+title: "Artery comparisons"
+author: "Tim Nieuwenhuis"
+date: "7/13/2021"
+output: html_document
+---
+
+GTEx has three artery tissue, coronary, tibial, and aorta. We would expect some
+simialir clusters and some different ones (muscle contamination), we want to see
+what the overlap looks like. We will explore this question here.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
