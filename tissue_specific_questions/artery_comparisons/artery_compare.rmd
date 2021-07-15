@@ -11,5 +11,129 @@ what the overlap looks like. We will explore this question here.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+```
+
+
+Load in the files
+```{r}
+tib_genes <- read.csv("../../MARCC output/variance_genes_kendall/kendall-artery_tibial-gene-clusters-high-variance.csv")
+cora_genes <- read.csv("../../MARCC output/variance_genes_kendall/kendall-artery_coronary-gene-clusters-high-variance.csv")
+aorta_genes <- read.csv("../../MARCC output/variance_genes_kendall/kendall-artery_aorta-gene-clusters-high-variance.csv") 
+artery_df_list <- list("tibial" = tib_genes, "coronary" = cora_genes, "aorta"= aorta_genes)
+```
+
+Turn tables into lists
+```{r}
+
+TableListToGeneList <- function(table_list){
+    out_list <- list()
+    for (ind_table in seq_along(table_list)) {
+        cur_name <- names(table_list)[ind_table]
+        cur_df <- table_list[[ind_table]]
+        clust_list <- list()
+        for (ind_clust in seq(ncol(cur_df))) {
+            clust_name <- names(cur_df)[ind_clust]
+            clust_list[[clust_name]] <- cur_df[[ind_clust]][cur_df[[ind_clust]] != ""]
+        }
+        out_list[[cur_name]] <-clust_list
+    }
+    return(out_list)
+}
+
+artery_gene_list <- TableListToGeneList(artery_df_list)
+
+```
+Generate overlap pseudo-correlation matrix
+```{r}
+
+gene_list <- artery_gene_list
+
+PseudoCorrelate <- function(gene_list, proportion_scale = FALSE){
+    n_clusts <- sum(unlist(lapply(gene_list, length)))
+    temp_clusts <- lapply(gene_list, names)
+    col_row_names <- c()
+    for (ind in seq_along(temp_clusts)) {
+        cur_res <-paste(names(temp_clusts)[ind], temp_clusts[[ind]],sep = ".")
+        col_row_names <- append(col_row_names, cur_res)
+    }
+    pseudo_matrix <- matrix(data = NA,
+                            nrow = n_clusts, ncol = n_clusts)
+    colnames(pseudo_matrix) <- col_row_names
+    rownames(pseudo_matrix) <- col_row_names
+    split_names <- str_split(col_row_names, "[.]", n = 2)
+    tiss_names <- sapply(split_names, function(x){x[1]})
+    clust_names <- sapply(split_names, function(x){x[2]})
+    for (ind_col in seq(ncol(pseudo_matrix))) {
+        col_name <- colnames(pseudo_matrix)[ind_col]
+        for (ind_row in seq(nrow(pseudo_matrix))) {
+            if (!is.na(pseudo_matrix[ind_row, ind_col])) {
+                next 
+            }
+            col_genes <- gene_list[[tiss_names[ind_col]]][[clust_names[ind_col]]]
+            row_genes <- gene_list[[tiss_names[ind_row]]][[clust_names[ind_row]]]
+            overlap <- sum(col_genes %in% row_genes)
+            if (proportion_scale == TRUE) {
+               overlap <- overlap/max(c(length(col_genes), length(row_genes)))    
+            }
+            pseudo_matrix[ind_row, ind_col] <- overlap
+            if (ind_row != ind_col) {
+                pseudo_matrix[ind_col, ind_row] <- overlap
+            }
+        }
+    }
+    return(pseudo_matrix)
+}
+
+
+artery_matrix <- PseudoCorrelate(gene_list = artery_gene_list,proportion_scale = T)
+
+## Create diagnal matrix
+length_of_clusts <- unlist(lapply(artery_gene_list, function(x){lapply(x, length)}))
+for_plotter <- matrix(data = "", nrow = length_of_clusts, ncol = length_of_clusts)
+for (ind in seq_along(length_of_clusts)) {
+    for_plotter[ind,ind] <- length_of_clusts[ind]
+}
+
+pheatmap(artery_matrix,width = 10, height = 8,filename = "data_out/pseudo_correlations.pdf",display_numbers = for_plotter)
+```
+
+
+See if cluster correlate with each other in the same people
+```{r}
+arteries <- c("aorta", "tibial", "coronary")
+profile_list <- list()
+for (artery_type in arteries) {
+    cur_art <- read.csv(paste0("../../MARCC output/variance_profiles_kendall/kendall-artery_",
+                                artery_type,"-cluster-profiles.csv"))
+    colnames(cur_art)[1] <- "SAMPID"
+    colnames(cur_art) <- paste(colnames(cur_art), artery_type,sep = "_")
+    cur_art$SUBJID <- GTEx_SAMPID_to_SUBJID(cur_art$SAMPID)
+    profile_list[[artery_type]] <- cur_art
+}
+
+aort_tib <- inner_join(profile_list$aorta, profile_list$tibial, suffix = c("_aorta", "_tibial"), by = "SUBJID")
+all_profiles <- inner_join(aort_tib, profile_list$coronary)
+
+
+
+all_numeric_profiles <- select(all_profiles, -starts_with("SAMPID"), -SUBJID)
+
+pearson_correlation <- cor(all_numeric_profiles)
+
+pheatmap(pearson_correlation,filename = "data_out/all_profile_correlations.pdf")
+
+```
+
+```{r}
+pheno_profiles <- left_join(all_profiles, pheno_dat)
+
+ggplot(pheno_profiles, aes(factor(MHBCTINF), A.1_aorta)) +
+    ggforce::geom_sina()
+
+ggplot(pheno_profiles, aes(C.1_tibial, A.1_aorta)) +
+    geom_point()
 ```
 
