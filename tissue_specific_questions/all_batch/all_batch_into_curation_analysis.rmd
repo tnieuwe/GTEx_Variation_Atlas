@@ -1,0 +1,44 @@
+---
+title: "Age, sex, ischemic curation inclusion"
+author: "Tim Nieuwenhuis"
+date: "7/14/2021"
+output: html_document
+---
+#This file is to only be run once after runing all_batch_analysis.rmd!
+
+The point of this file is to edit the document of curated cluster analysis
+(manual_curation.csv). We will add two new columns with a boolean saying if
+a given cluster is or is not associated with either sex or ischemic time.
+This is only to be ran once because automated change to manual_curation.csv could
+lead to unknown issues as it is genreally a manually changed file.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+load data
+```{r}
+curation_dat <- read.csv(file = "../../manual_cluster_analysis/manual_curation.csv")
+ischemic_dat <- read.csv(file = "data_out/ischemic_batch_results.csv")
+sex_dat <- read.csv(file = "data_out/sex_batch_results.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+Prepare sex and ischemic clusters to interact with curation dat, by including
+abbreviations and joining clusters to abbreviations
+```{r}
+cur_keys <- key_dat %>% select(label, cluster, tissue=  "r_names")
+sex_joined <- left_join(sex_dat, cur_keys, by = c("tissue", "cluster"))
+ischemic_joined <- left_join(ischemic_dat, cur_keys, by = c("tissue", "cluster"))
+```
+Mark curation dat if sig_columns exist in 
+```{r}
+sig_ischemic <- filter(ischemic_joined, p_adj < 0.05)
+sig_sex <- filter(sex_joined, p_adj < 0.05)
+
+curation_dat$ischemic_sig <- curation_dat$label %in% sig_ischemic$label
+curation_dat$sex_sig <- curation_dat$label %in% sig_sex$label
+
+write.csv(curation_dat, file = "../../manual_cluster_analysis/manual_curation.csv",row.names = F)
+```
+

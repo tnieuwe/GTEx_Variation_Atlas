@@ -1,0 +1,131 @@
+---
+title: "All Batch Model"
+author: "Tim Nieuwenhuis"
+date: "7/9/2021"
+output: html_document
+---
+
+The point of this Rmarkdown file is simlair to all ischemic, however I want to
+find all significant results between age, sex, and ischemic time which are all
+know batch factors. Hardy too
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(broom)
+```
+
+Load data
+```{r}
+## Load functions
+source("../../global_in/general_scripts.R")
+
+## Master table for tissues
+master_key_table <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+
+## get sample data and subject data
+subj_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- read.table(file = "../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt",
+                       sep = "\t", fill = TRUE, header = TRUE)
+```
+
+```{r}
+### For each cluster find what percentage of the genes fall into what cell types
+
+
+### Load in the data
+## For each gtex tissue
+all_tissues <- unique(master_key_table$r_names)
+
+tissue_dat_list <- list()
+for (tiss_ind in seq_along(all_tissues)) {
+    tiss_list_out <- list()
+    cur_tiss <- all_tissues[tiss_ind]
+    tiss_df <- filter(master_key_table, r_names %in% cur_tiss)
+
+    gene_dat <- read.csv(paste0("../../MARCC output/",
+                     "variance_genes_kendall/kendall-",
+                     cur_tiss,"-gene-clusters-high-variance.csv"))
+    
+    zscore_dat <- read.csv(paste0("../../MARCC output/",
+                                      "variance_profiles_kendall/kendall-",
+                                      cur_tiss,"-cluster-profiles.csv"))
+    
+    tiss_list_out[["gene_dat"]] <- gene_dat
+    tiss_list_out[["zscore_dat"]] <- zscore_dat
+    tissue_dat_list[[cur_tiss]] <- tiss_list_out
+    
+}
+
+
+```
+
+Go through each tissue and do analysis
+```{r}
+
+batch_sample_dat <- samp_dat %>% select(SAMPID, SMTSISCH) %>%
+    mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
+batch_subj_dat <- subj_dat %>% select(SUBJID, AGE, SEX)
+all_batch_dat <- left_join(batch_sample_dat, batch_subj_dat)
+
+## For each tissue
+cor_table <- NULL
+
+## List for each batch
+age_batch <- NULL
+sex_batch <- NULL
+ischemic_batch <- NULL
+
+for (tiss_ind in seq_along(tissue_dat_list)) {
+    ## Get tissue
+    tissue <- names(tissue_dat_list)[[tiss_ind]]
+    ## Get Z-score data from tissue
+    zscore_dat <- tissue_dat_list[[tissue]][["zscore_dat"]]
+    colnames(zscore_dat)[1] <- "SAMPID"
+    ## Make Zscore data bindable
+    zscore_dat <- zscore_dat %>%
+        mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
+    joined_dat <- left_join(zscore_dat, all_batch_dat)
+    ## Get z-score columns
+    z_score_ind <- sapply(zscore_dat, function(x){is.numeric(x)})
+    z_score_cols <- colnames(zscore_dat[,z_score_ind])
+    
+    for ( cur_col_ind in seq_along(z_score_cols)) {
+        cur_col <- z_score_cols[cur_col_ind]
+        cluster <- cur_col
+        gene_list <- tissue_dat_list[[tissue]][["gene_dat"]][,cluster]
+        gene_list <- paste(gene_list[gene_list != ""],collapse  = "; ")
+        lm_out <- lm(as.formula(paste0(cur_col, " ~ ", "AGE + SEX + SMTSISCH")),
+                     data = joined_dat)
+        summ_out <- broom::tidy(lm_out)
+        age_temp <- filter(summ_out, term == "AGE") %>%
+            cbind(cluster, tissue, ., gene_list)
+        sex_temp <- filter(summ_out, term == "SEX") %>%
+            cbind(cluster, tissue, .,gene_list)
+        ischemic_temp <- filter(summ_out, term == "SMTSISCH") %>%
+            cbind(cluster, tissue, .,gene_list)
+        age_batch <- rbind(age_batch, age_temp)
+        sex_batch <- rbind(sex_batch, sex_temp)
+        ischemic_batch <- rbind(ischemic_batch, ischemic_temp)
+
+    }
+}
+
+batches_out  <- lapply(list(age_batch,sex_batch, ischemic_batch), function(x){
+    x$p_adj <- p.adjust(x$p.value,method = "fdr")
+    x <- select(x, everything(), gene_list)
+    x <- arrange(x, p_adj)
+    return(x)
+})
+
+batches <- c("age", "sex", "ischemic")
+for (table_ind in seq_along(batches_out)) {
+    cur_batch <- batches[table_ind]
+    cur_table <- batches_out[[table_ind]]
+    write.csv(cur_table, file = paste0("data_out/", cur_batch,"_batch_results.csv"),
+              row.names = F)
+}
+```
