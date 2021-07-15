@@ -1,0 +1,46 @@
+---
+title: "create manual file"
+author: "Tim Nieuwenhuis"
+date: "6/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tibble)
+library(stringr)
+```
+
+Load data
+```{r}
+dat <- read.csv("../automated_cluster_analysis/data_out/labels_and_genes.csv")
+```
+Name known clusters
+```{r}
+sex_genes <- c("XIST","ZFY")
+
+dat  <- dat %>%
+        mutate(probable_cluster = case_when(
+           (str_detect(genes, "XIST")) ~ "SEX",
+           str_detect(genes, "PRSS1") & !(startsWith(label, "PNCREAS")) ~ "Contamination",
+           str_detect(genes, "KRT4") & !(startsWith(label, "ESP")) ~ "Contamination",
+           str_detect(genes, "IGH") ~ "Immuno",
+           str_detect(genes, "HBB") ~ "Some blood",
+
+           TRUE ~ ""
+        ))
+
+
+sex_clusts <- str_replace(dat[dat$probable_cluster == "SEX","label"], "_[1-9]", "")
+
+dat  <- dat %>%
+        mutate(probable_cluster = ifelse(substr(label,1,nchar(label)-2) %in% sex_clusts, "SEX", probable_cluster)) %>%
+    select(label, probable_cluster, genes)
+
+```
+Write out
+```{r}
+write.csv(dat, "data_out/pre_manual_curation.csv", row.names = F)
+```
+

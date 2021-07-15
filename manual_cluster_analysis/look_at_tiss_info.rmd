@@ -1,0 +1,32 @@
+---
+title: "look_at_tiss_results"
+author: "Tim Nieuwenhuis"
+date: "6/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+tiss_labels = c("ADPSBQ", "ADPVSC")
+```
+
+pre-load
+```{r}
+r_names <- read.csv("../automated_cluster_analysis/data_out/key_table.csv") %>%
+    filter(abrreviated %in% tiss_labels) %>% select(r_names) %>% unique() 
+r_names <- unlist(r_names)
+list_out <- list()
+for (tiss_ind in seq_along(r_names)) {
+    name <- r_names[tiss_ind]
+    tab_1 <- read.csv(paste0("../MARCC output/variance_genes_kendall/kendall-",name,"-gene-clusters-high-variance.csv"))
+    tab_2 <- read.csv(paste0("../automated_cluster_analysis/hpastainr_analysis/data_out/",name,"_hpastainr_results.csv"))
+    tab_3 <- read.csv(paste0("../automated_cluster_analysis/panglaodb_analysis/data_out/all_tissue_out/",name,"_panglao_analysis.csv"))
+    list_out[[name]] <- list(tab_1,tab_2,tab_3)
+}
+
+list_out
+```
+
