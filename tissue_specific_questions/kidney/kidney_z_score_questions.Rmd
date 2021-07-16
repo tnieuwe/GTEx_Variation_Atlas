@@ -50,15 +50,48 @@ Clean and join data
 
 Join_data
 ```{r}
-final_dat <- clust_profs %>% rownames_to_column(var = "SAMPID") %>%
-    mutate(SUBJID = GTEx_SAMPID_to_SUBJIUD(SAMPID)) %>%
+all_dat <- clust_profs %>% rownames_to_column(var = "SAMPID") %>%
+    mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
     left_join(phen_dat, by = "SUBJID") %>%
     left_join(samp_dat, by = "SAMPID") 
 
 ```
 
-Ask questions below
+Do any of these clusters correlate with kidney disease?
 ```{r}
-final_dat
+
+disease_dat <- all_dat %>% select(SAMPID, colnames(clust_profs), "MHNEPH", "MHRNLFLR", "MHUREMIA")
+
+cat("nephristis or nephrotic syndrome")
+table(disease_dat$MHNEPH)
+
+cat("\n Renale Failure")
+table(disease_dat$MHRNLFLR)
+
+cat("\n Uremia")
+table(disease_dat$MHUREMIA)
+cat("\n We only have people with renal failure")
+```
+
+
+```{r}
+plot_dat <- disease_dat %>% select(-MHNEPH, -MHUREMIA) %>%
+    mutate(MHRNLFLR = factor(MHRNLFLR)) %>%
+    reshape2::melt(id.vars = c("SAMPID", "MHRNLFLR"),value.name = "zscore") 
+
+
+ggplot(plot_dat, aes(x = MHRNLFLR, y = zscore)) +
+    ggforce::geom_sina(alpha = .5) +
+    facet_grid(~variable) 
+
+t_table <- NULL
+for (cluster in unique(plot_dat$variable)) {
+    for_test <- filter(plot_dat, variable == cluster)
+    temp_test <- broom::tidy(t.test(zscore ~ MHRNLFLR, for_test ))
+    temp_test <- cbind(temp_test, cluster)
+    t_table <- rbind(t_table, temp_test)
+}
+
+t_table
 ```
 
