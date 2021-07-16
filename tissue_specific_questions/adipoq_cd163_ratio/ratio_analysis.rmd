@@ -1,0 +1,166 @@
+---
+title: "CD163 ADIPOQ ratio"
+author: "Tim Nieuwenhuis"
+date: "7/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(tidyverse)
+source("../../global_in/general_scripts.R")
+```
+
+Load in sample data
+```{r}
+samp_dat <- read.table("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt",
+                      header=TRUE,stringsAsFactors=FALSE,sep="\t",fill=TRUE,
+                      quote="")
+```
+
+Load in all required tissues annd their respective genes
+
+```{r}
+tissue_list = c("adipose_subcutaneous",
+                "adipose_visceral__omentum",
+                "artery_aorta",
+                "artery_tibial",
+                "artery_coronary",
+                "breast_mammary_tissue",
+                "adrenal_gland",
+                "colon_transverse",
+                "minor_salivary_gland",
+                "skin_not_sun_exposed__suprapubic",
+                "nerve_tibial"
+                )
+all_dat <- NULL
+for (cur_tiss in tissue_list) {
+    load(paste0("../../Setup Code/output/",cur_tiss,"-vsd-mean-filtered.rda"))
+    dat <- assay(vst_dat)
+    ind <- gtab$gene_name %in% c("ADIPOQ", "CD163", "LPL")
+    gtab_filt <- gtab[ind,]
+    dat_filt <- dat[ind,]
+    rownames(dat_filt) <- gtab_filt$gene_name
+    dat_filt <- rbind(dat_filt, cur_tiss)
+    all_dat <- cbind(all_dat, dat_filt)
+}
+
+pre_final_dat <- t(all_dat) %>% as.data.frame() %>%
+    rownames_to_column(var = "SAMPID") %>%
+    mutate(ADIPOQ = as.numeric(ADIPOQ), CD163 = as.numeric(CD163), LPL = as.numeric(LPL),
+           adi_cd_ratio = ADIPOQ/CD163,
+           SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
+final_dat <- pre_final_dat %>%
+    select(SUBJID, cur_tiss, adi_cd_ratio) %>%
+    pivot_wider(id_cols = SUBJID, names_from = cur_tiss, values_from = adi_cd_ratio)
+
+```
+
+How well does LPL (a gene found in the aortic cluster) associate with ADIPOQ?
+
+```{r}
+numeric_dat <- final_dat %>% select(-SUBJID) 
+
+cor_mat <- cor(numeric_dat, method = "kendall")
+
+pheatmap(cor_mat)
+art_aort <- temp_dat %>% filter(cur_tiss == "artery_aorta")
+
+ggplot(pre_final_dat, aes(ADIPOQ, LPL, color = cur_tiss)) + geom_point(alpha = .5)
+```
+If we look at the extreme cases of adipoq/cd163 ratio in adipose subc, does this
+ratio carry over in people?
+```{r}
+bot_fat <- final_dat %>% arrange(adipose_subcutaneous)%>%
+    filter(!is.na(adipose_subcutaneous)) %>%
+    slice_head(n = 20)
+top_fat <- final_dat %>% arrange(adipose_subcutaneous) %>%
+    filter(!is.na(adipose_subcutaneous)) %>%
+    slice_tail(n = 20) 
+both_fat <- rbind(bot_fat, top_fat) %>%
+    pivot_longer(cols =!c(SUBJID), names_to = c("tissue"), values_to = c("ratio")) %>%
+    mutate(tissue = as.factor(tissue),
+           top_o_bot = case_when(
+               SUBJID %in% bot_fat$SUBJID ~ "bot",
+               SUBJID %in% top_fat$SUBJID ~ "top"
+           ))
+
+ggplot(both_fat, aes(tissue, ratio, color = top_o_bot, group = SUBJID), alpha = .5)  +
+    geom_point(alpha = .5) +
+    geom_line(alpha = .5) +
+    theme(axis.text.x = element_text(angle = 80, hjust=1))
+    
+both_fat %>% group_by(tissue, top_o_bot) %>% summarize(mean = mean(ratio, na.rm = T)) 
+
+```
+
+Do any of these phenotypes correlate with the adipoq/cd163 ratio?
+```{r}
+pheno_combined <- left_join(final_dat, pheno_dat)
+age_out <- NULL
+isch_out <- NULL
+vent_out <- NULL
+DTH_out <- NULL
+pheno_compare <-  function(pheno, numeric_dat, cur_col, phenotype,
+                           cor_method = "pearson"){
+    ind <- !is.na(numeric_dat[,cur_col])
+    res_test <- cor.test(x = pheno_combined[ind,phenotype, drop = TRUE],
+             y= numeric_dat[ind,cur_col, drop = TRUE],method = cor_method)
+    res_tidy <- tidy(res_test)
+    res_tidy$phenotype <- phenotype
+    res_tidy$tissue <- colnames(numeric_dat)[cur_col]
+    return(res_tidy)
+}
+
+for (cur_col in seq(ncol(numeric_dat))) {
+    ind <- !is.na(numeric_dat[,cur_col])
+    age_temp <- pheno_compare(pheno_combined, numeric_dat, cur_col, "AGE",
+                  cor_method = "kendall")
+    isch_temp <- pheno_compare(pheno_combined, numeric_dat, cur_col, "TRISCHD",
+                  cor_method = "kendall")
+    age_out <- rbind(age_out, age_temp)
+    isch_out <- rbind(isch_out, isch_temp)
+
+}
+```
+
+How well do these results correlate over all people?
+```{r}
+correlation_results <- NULL
+cor_mat <- matrix(NA,nrow = ncol(numeric_dat), ncol = ncol(numeric_dat))
+colnames(cor_mat) <- colnames(numeric_dat); rownames(cor_mat) <- colnames(numeric_dat)
+overlay_mat <- cor_mat
+
+## This for loop allows us to correlate all available data for a given correlation
+## there are to many NAs otherwise to find anything meaningful.
+for (cor_1 in colnames(numeric_dat)) {
+    for (cor_2 in colnames(numeric_dat)) {
+        cor_tab <- cbind(numeric_dat[,cor_1], numeric_dat[,cor_2]) %>% drop_na()
+        tidy_res <- tidy(cor.test(cor_tab[,1], cor_tab[,2],method = "kendall"))
+        tidy_res$tiss_1 <- cor_1
+        tidy_res$tiss_2 <- cor_2
+        cor_mat[cor_1, cor_2] <-tidy_res$estimate
+        overlay_mat[cor_1, cor_2] <- ifelse(tidy_res$p.value < 0.05,
+                                            paste0(round(tidy_res$estimate,digits = 2), "*"),
+                                            round(tidy_res$estimate,digits = 2))
+        correlation_results <- rbind(correlation_results, tidy_res)
+    }
+}
+
+no_dupes <- filter(correlation_results, tiss_1 != tiss_2) %>%
+    mutate(padj = p.adjust(p.value, method = "fdr")) %>%
+    mutate(pos_o_neg = ifelse(estimate > 0, "positive", "negative"),
+           sig = ifelse(padj < 0.05, "sig", "not_sig"))
+no_dupes <- no_dupes[!duplicated(no_dupes$statistic),]
+
+hist(no_dupes$padj)
+
+pheatmap(cor_mat,display_numbers = overlay_mat)
+
+
+ggplot(no_dupes, aes(x = padj, fill = pos_o_neg, color = sig)) +
+    geom_histogram() +
+    viridis::scale_color_viridis(discrete =T,option = "A")
+```
+
