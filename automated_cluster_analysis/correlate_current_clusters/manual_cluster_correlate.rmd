@@ -1,0 +1,99 @@
+---
+title: "manual_within_tiss_correlations"
+author: "Tim Nieuwenhuis"
+date: "7/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("../../global_in/general_scripts.R")
+```
+
+Read in data
+```{r}
+manual_df <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+key_dat <- read.csv("../data_out/key_table.csv")
+```
+
+Load in profiles, this profile will now be in general_scripts.R
+```{r}
+location = "../../MARCC output/variance_profiles_kendall/"
+
+ZscoreProfilePuller <- function(r_name_vect, location){
+    ### This function is used to pull Z-score of different tissues easily
+    profile_list <- list()
+    for (tiss in r_name_vect) {
+        cur_frame <- read.csv(paste0(location,
+                                     "kendall-",
+                                     tiss,
+                                     "-cluster-profiles.csv")) %>%
+            mutate(SUBJID = GTEx_SAMPID_to_SUBJID(X)) %>%
+            select(SUBJID, SAMPID = "X", everything())
+        profile_list[[tiss]] <- cur_frame
+    }
+    return(profile_list)
+}
+
+all_zscores <- ZscoreProfilePuller(key_dat$r_names, location = location)
+```
+
+
+
+```{r}
+## This loop goes through all the tissues and their profiles, correaltes the
+## profiles, and find which profiles correlate well together. 
+
+df_out <- NULL
+for (tissue_ind in seq_along(all_zscores)){
+    ## Get the table, tissue name, and tissue abbreviation
+    cur_df <- all_zscores[[tissue_ind]]
+    cur_tiss <- names(all_zscores[tissue_ind])
+    abbrev <- unique(key_dat$abrreviated[key_dat$r_names == cur_tiss])
+    ## Make numeric table used in correlation
+    numeric_df <- select(cur_df, -SAMPID, -SUBJID)
+    ## Correlate all profiles together
+    cor_table <- NULL
+    for (cor_1 in colnames(numeric_df)) {
+        for (cor_2 in colnames(numeric_df)) {
+            ## Don't waste time correlating the same clsuter twice
+            if (any(str_detect(cor_table$cor_2,pattern = cor_1)) & any(str_detect(cor_table$cor_1,cor_2)) ) {
+                next
+            }
+            cur_row <- broom::tidy(cor.test(numeric_df[,cor_1], numeric_df[,cor_2]))
+            #join_cor <- paste0(cor_1,cor_2)
+            cur_row <- cbind(cur_row, cor_1, cor_2)
+            cor_table <- rbind(cor_table, cur_row)
+        }
+    }
+    ## Filter the resulting correlations
+    filt_table <- cor_table %>% filter(cor_1 != cor_2) %>%
+        mutate(p_adj = p.adjust(p.value,method = "bonferroni")) %>%
+        filter(p_adj <= 0.05, abs(estimate) > .30)
+    ## Creat this new frame that will act as if we correlated all clusters twice
+    new_frame <- rbind(cbind(filt_table$cor_1,filt_table$cor_2),
+                       cbind(filt_table$cor_2,filt_table$cor_1)) %>%
+        as.data.frame()
+    ## Loop over the unique clusters to create a dataframe bindable to manual
+    ## curation.
+    final_frame = NULL
+    for (cur_clust in unique(new_frame$V1)) {
+        temp_tab <- filter(new_frame, V1 == cur_clust)
+        new_row <- cbind(cur_clust, paste(temp_tab$V2,collapse = "; ")) %>%
+            as.data.frame() %>%
+            mutate(label = paste(abbrev,cur_clust, sep = "_"),
+                   label = str_replace(label, "[.]", "_"))
+            
+        final_frame = rbind(final_frame, new_row)
+    }
+    final_frame <- final_frame %>% select(label, correlating_clusters_g30 = "V2")
+    df_out <- rbind(df_out, final_frame)
+}
+## Bind the final output together
+new_man_df <- left_join(manual_df, df_out)
+```
+Careful when running this!
+```{r}
+#write.csv(new_man_df, "../../manual_cluster_analysis/manual_curation.csv")
+```
+
