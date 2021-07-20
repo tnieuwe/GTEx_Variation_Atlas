@@ -68,32 +68,61 @@ for (tissue_ind in seq_along(all_zscores)){
     }
     ## Filter the resulting correlations
     filt_table <- cor_table %>% filter(cor_1 != cor_2) %>%
-        mutate(p_adj = p.adjust(p.value,method = "bonferroni")) %>%
+        mutate(p_adj = p.adjust(p.value,method = "bonferroni"),
+               direction = ifelse(estimate > 0, "positive", "negative")) %>%
         filter(p_adj <= 0.05, abs(estimate) > .30)
     ## Creat this new frame that will act as if we correlated all clusters twice
-    new_frame <- rbind(cbind(filt_table$cor_1,filt_table$cor_2),
-                       cbind(filt_table$cor_2,filt_table$cor_1)) %>%
+    new_frame <- rbind(cbind(filt_table$cor_1,filt_table$cor_2,filt_table$direction),
+                       cbind(filt_table$cor_2,filt_table$cor_1,filt_table$direction)) %>%
         as.data.frame()
     ## Loop over the unique clusters to create a dataframe bindable to manual
     ## curation.
     final_frame = NULL
-    for (cur_clust in unique(new_frame$V1)) {
+    for (cur_clust in sort(unique(new_frame$V1))) {
         temp_tab <- filter(new_frame, V1 == cur_clust)
-        new_row <- cbind(cur_clust, paste(temp_tab$V2,collapse = "; ")) %>%
-            as.data.frame() %>%
-            mutate(label = paste(abbrev,cur_clust, sep = "_"),
-                   label = str_replace(label, "[.]", "_"))
-            
+        if (nrow(temp_tab) == 0) {
+            next
+        }
+        pos_tab <- temp_tab %>%
+            filter(V3 == "positive")
+        neg_tab <- temp_tab %>%
+            filter(V3 == "negative")
+        if (nrow(pos_tab) > 0) {
+            new_row_pos <- cbind(cur_clust, paste(pos_tab$V2,collapse = "; ")) %>%
+                as.data.frame() %>%
+                mutate(label = paste(abbrev,cur_clust, sep = "_"),
+                       label = str_replace(label, "[.]", "_")) %>%
+                rename(pos_cor_g30 = "V2")
+        }
+        if (nrow(neg_tab) > 0) {
+            new_row_neg <- cbind(cur_clust, paste(neg_tab$V2,collapse = "; ")) %>%
+                as.data.frame() %>%
+                mutate(label = paste(abbrev,cur_clust, sep = "_"),
+                       label = str_replace(label, "[.]", "_")) %>%
+                rename(neg_cor_g30 = "V2")
+        }
+        ## Joining based on rows
+        if (nrow(neg_tab) > 0 & nrow(pos_tab) > 0) {
+            new_row <- inner_join(new_row_pos,  new_row_neg, by = c("cur_clust", "label"))
+        } else if (nrow(neg_tab) > 0) {
+            new_row_neg$pos_cor_g30 <- NA
+            new_row <- new_row_neg
+        } else if (nrow(pos_tab) > 0){
+            new_row_pos$neg_cor_g30 <- NA
+            new_row <- new_row_pos
+        }
+        new_row <- select(new_row, cur_clust, label, neg_cor_g30, pos_cor_g30)
         final_frame = rbind(final_frame, new_row)
     }
-    final_frame <- final_frame %>% select(label, correlating_clusters_g30 = "V2")
+    final_frame <- final_frame %>% select(label, pos_cor_g30, neg_cor_g30)
     df_out <- rbind(df_out, final_frame)
 }
 ## Bind the final output together
 new_man_df <- left_join(manual_df, df_out)
+
 ```
 Careful when running this!
 ```{r}
-#write.csv(new_man_df, "../../manual_cluster_analysis/manual_curation.csv")
+#write.csv(new_man_df, "../../manual_cluster_analysis/manual_curation.csv",row.names = F)
 ```
 
