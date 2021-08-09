@@ -1,0 +1,204 @@
+---
+title: "brain_inter_correlations"
+author: "Tim Nieuwenhuis"
+date: "7/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(pheatmap)
+library(RColorBrewer)
+library(SuppDists)
+library(reshape2)
+#library(stringr)
+library(tidyverse)
+```
+tissue_list
+```{r}
+tiss_list <- read.csv(file = "../../global_in/general_list_test_v8.txt",header = F)[,1]
+tiss_list <- tiss_list[startsWith(tiss_list, "brain")]
+```
+
+Load in the cluster data 
+```{r}
+options(error=recover)
+list_dat <- sapply(tiss_list, function(x){
+    ## Go through list to load in files
+    load_file <-  paste0("../../MARCC output/variance_genes_kendall/kendall-",
+                          x,
+                          "-gene-clusters-high-variance.csv")
+    new_dat <- read.csv(load_file)
+    all_col_names <- colnames(new_dat)
+    for (cur_col_name in all_col_names) {
+      ## Below code collapses the negatively correlating gene clusters together
+        #cur_col_name <- names(new_dat)[col_ind]
+        # if (is.na(cur_col_name)) {
+        #     break
+        # }
+        if (str_detect(cur_col_name, "2")) {
+            next
+        }
+        if(str_detect(cur_col_name, "1")){
+            flatten_col_name <- str_replace(cur_col_name, ".1", "")
+            ## Get out column data
+            col_1 <- new_dat[[paste0(flatten_col_name, ".1")]]
+            col_2 <- new_dat[[paste0(flatten_col_name, ".2")]]
+            ## Join sub clusters and remove blank space
+            join_col <- append(col_1, col_2)
+            join_col <- join_col[join_col != ""]
+            ## If nrow of new_dat > sub_clusters length add to sub_clusters
+            if (nrow(new_dat) > length(join_col)) {
+               join_col <- append(join_col, rep("", nrow(new_dat) - length(join_col))) 
+            }
+            ## If the length of the new column is larger than nrow add new rows to
+            ## new_dat
+            if (length(join_col) > nrow(new_dat)) {
+                filler <- matrix("", ncol = ncol(new_dat),
+                                                 nrow = length(join_col) - nrow(new_dat))
+                colnames(filler) <- colnames(new_dat)
+                new_dat <- rbind(new_dat, filler)
+            }
+            remove_old_ind <- !startsWith(colnames(new_dat), flatten_col_name)
+            new_dat <- new_dat[remove_old_ind]
+            new_dat <- cbind(new_dat, join_col)
+            names(new_dat)[ncol(new_dat)] <- flatten_col_name
+            
+        }
+    }
+    ## Reorder colnames
+    pre_order <- order(colnames(new_dat))
+    order_ind <- pre_order[-length(pre_order)]
+    order_ind <- append(1, order_ind)
+    new_dat <- new_dat[,order_ind]
+    df_list <- NULL
+    unclustered_vect <- c()
+    
+    for (col_ind in seq(ncol(new_dat))) {
+        new_col <- new_dat[,col_ind]
+        ## Remove non-clustering clusters
+        # if (colnames(new_dat)[col_ind] != "X") {
+        #   df_list[[colnames(new_dat)[col_ind]]] <- new_col[new_col != ""]  
+        # }
+        ## Keep non-clustering genes and
+        df_list[[colnames(new_dat)[col_ind]]] <- new_col[new_col != ""]  
+    }
+    return_list <- NULL
+    return_list[[x]] <- df_list
+    
+})
+#print("hi")
+
+```
+
+Pull out high var genes that do not cluster
+```{r}
+unclust_genes <- c()
+for (tiss_ind in seq_along(list_dat)) {
+  ## Go through tissues
+    tiss_dat <- list_dat[[tiss_ind]]
+    for (col_ind in seq_along(tiss_dat)) {
+      ## Go through clusters
+        col_name <- names(tiss_dat[col_ind])
+        ## If X cluster append data to unclustered gene vector
+        if (col_name == "X") {
+           unclust_genes <- append(unclust_genes, tiss_dat[[col_ind]]) 
+        } 
+    }
+}
+#unclust_genes <- unique(unclust_genes)
+
+unclust_ind <- table(unclust_genes) > quantile(table(unclust_genes), .95)
+unclust_genes <- unclust_genes[unclust_ind]
+```
+
+
+Build out correlation matrix
+```{r}
+## Get all unique genes
+unique_genes <- (sort(unique(unlist(list_dat))))
+## Make an empty psuedo correlation matrix to fill
+pseudo_cor_mat <- matrix(data = 0, nrow = length(unique_genes), ncol = length(unique_genes))
+colnames(pseudo_cor_mat) <- unique_genes ; rownames(pseudo_cor_mat) <- unique_genes
+## Use gene ran in the loop to prevent repeated calculations
+gene_ran <- c()
+## The goal of this loop is to go through every single unique gene and find
+## how many other genes frequently show up in the same cluster with it
+for (gene in unique_genes) {
+    ## Create a vector that will be used to append genes that appear in shared 
+    ## clusters
+    to_count <- c()
+    for (tissue_ind in seq(length(list_dat))) {
+        tissue_list <- list_dat[[tissue_ind]]
+        for (cluster_ind in seq(length(tissue_list))) {
+        gene_result <- gene %in% tissue_list[[cluster_ind]]
+        ## If gene appears in the cluster then we append the cluster to the 
+        ## to count vector so we can count all the genes at the end of the loop
+        if (gene_result == TRUE) {
+            to_count <- append(to_count, tissue_list[[cluster_ind]]) 
+            }
+        }
+    }
+    all_hits <- sort(table(to_count),decreasing = T)
+    ## We check against previously ran genes to stop redundancy
+    ## because the code section below fills in data that is repeated across the
+    ## axis of the matrix.
+    all_hits <- all_hits[!(names(all_hits) %in% gene_ran)]
+    ## Fill in the matrix
+    for (ind_hit_gene in seq_along(all_hits)) {
+        hit_gene <- all_hits[ind_hit_gene]
+        pseudo_cor_mat[names(hit_gene), gene] <- hit_gene
+        pseudo_cor_mat[gene, names(hit_gene)] <- hit_gene
+    }
+    gene_ran <- append(gene_ran, gene)
+}
+
+## Understand the distribution of the column sums
+pseudo_col_sums <- colSums(pseudo_cor_mat)
+
+pseudo_ind <- pseudo_col_sums > quantile(pseudo_col_sums, .25)
+
+## The below code pulls the center diagnol line from the matrix allowing us to
+## to get the N of times a gene shows up in our clusters
+genes_n_clusts <- c()
+for (ind in seq(nrow(pseudo_cor_mat))) {
+    genes_n_clusts <- append(genes_n_clusts, pseudo_cor_mat[ind,ind])
+}
+
+names(genes_n_clusts) <- colnames(pseudo_cor_mat)
+
+## Test commonly appearing contamination gene
+genes_n_clusts[names(genes_n_clusts) == "PRSS1"]
+
+quantile(genes_n_clusts, c(.85, .90, .95))
+```
+
+```{r}
+##  An index requiring genes to appear at least 6 times to be considered for downstream analysis. 
+frequent_ind <- genes_n_clusts > 4
+frequent_genes <-  genes_n_clusts[frequent_ind]
+
+top_pseudo <- pseudo_cor_mat[frequent_ind,frequent_ind]
+top_pseudo_log <- log2(top_pseudo + 1)
+
+##Make the annotation
+anno <- data.frame(rep("Never X", nrow(top_pseudo)), row.names = rownames(top_pseudo))
+anno[rownames(anno) %in% unclust_genes,] <- "In X"
+colnames(anno) <- "X Clust"
+colors <- RColorBrewer::brewer.pal(2, "Set1")
+anno_colors <- list("X Clust" = c("Never X" = colors[2], "In X" = colors[1]))
+
+
+
+pdf(file = "data_out/brain_non_log_pseudo_correlations.pdf",width = 10, height = 8)
+pheatmap(top_pseudo,
+          fontsize_row = 1.2,
+          fontsize_col = 1.2,
+          annotation_row = anno,
+         annotation_col = anno,
+         annotation_colors = anno_colors)
+dev.off()
+
+```
+
