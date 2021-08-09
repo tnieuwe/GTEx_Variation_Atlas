@@ -8,3 +8,113 @@ GTEx_SAMPID_to_SUBJID <- function(sampids){
     ## individuals to their phenotype
   stringr::str_extract(string = sampids, pattern = "GTEX-[[:alnum:]]*")
 }
+
+
+ZscoreProfilePuller <- function(r_name_vect, location){
+    ### This function is used to pull Z-score of different tissues easily
+    profile_list <- list()
+    for (tiss in r_name_vect) {
+        cur_frame <- read.csv(paste0(location,
+                                     "kendall-",
+                                     tiss,
+                                     "-cluster-profiles.csv")) %>%
+            mutate(SUBJID = GTEx_SAMPID_to_SUBJID(X)) %>%
+            select(SUBJID, SAMPID = "X", everything())
+        profile_list[[tiss]] <- cur_frame
+    }
+    return(profile_list)
+}
+
+GeneClusterPuller <- function(r_name_vect, location){
+    ### This function is used to pull the genes of tissue clusters
+    tiss_list <- list()
+    for (tiss in r_name_vect) {
+        cur_frame <- read.csv(paste0(location,
+                                     "kendall-",
+                                     tiss,
+                                     "-gene-clusters-high-variance.csv"))
+        clust_list <- list()
+        for (cur_col in seq(ncol(cur_frame))) {
+            gene_column <- cur_frame[,cur_col]
+            gene_column <- gene_column[gene_column !=""]
+            column_name <- colnames(cur_frame)[cur_col]
+            clust_list[[column_name]] <- gene_column
+        }
+        tiss_list[[tiss]] <- clust_list
+    }
+    return(tiss_list)
+}
+
+AllGeneClusterPuller <- function(location){
+  ### This function is used to pull the genes of ALL tissue clusters
+  r_name_vect <- c("adipose_subcutaneous", "adipose_visceral__omentum", "adrenal_gland", 
+                   "artery_aorta", "artery_coronary", "artery_tibial", "brain_amygdala", 
+                   "brain_anterior_cingulate_cortex__ba24", "brain_caudate__basal_ganglia", 
+                   "brain_cerebellar_hemisphere", "brain_cerebellum", "brain_cortex", 
+                   "brain_frontal_cortex__ba9", "brain_hippocampus", "brain_hypothalamus", 
+                   "brain_nucleus_accumbens__basal_ganglia", "brain_putamen__basal_ganglia", 
+                   "brain_spinal_cord__cervical_c_1", "brain_substantia_nigra", 
+                   "breast_mammary_tissue", "cells_ebv_transformed_lymphocytes", 
+                   "cells_cultured_fibroblasts", "colon_sigmoid", "colon_transverse", 
+                   "esophagus_gastroesophageal_junction", "esophagus_mucosa", "esophagus_muscularis", 
+                   "heart_atrial_appendage", "heart_left_ventricle", "kidney_cortex", 
+                   "liver", "lung", "minor_salivary_gland", "muscle_skeletal", "nerve_tibial", 
+                   "ovary", "pancreas", "pituitary", "prostate", "skin_not_sun_exposed__suprapubic", 
+                   "skin_sun_exposed__lower_leg", "small_intestine_terminal_ileum", 
+                   "spleen", "stomach", "testis", "thyroid", "uterus", "vagina", 
+                   "whole_blood")
+  tiss_list <- list()
+  for (tiss in r_name_vect) {
+    cur_frame <- read.csv(paste0(location,
+                                 "kendall-",
+                                 tiss,
+                                 "-gene-clusters-high-variance.csv"))
+    clust_list <- list()
+    for (cur_col in seq(ncol(cur_frame))) {
+      gene_column <- cur_frame[,cur_col]
+      gene_column <- gene_column[gene_column !=""]
+      column_name <- colnames(cur_frame)[cur_col]
+      clust_list[[column_name]] <- gene_column
+    }
+    tiss_list[[tiss]] <- clust_list
+  }
+  return(tiss_list)
+}
+
+ClusterGeneOverlaps <- function(genes_of_int,
+                                all_clusters,
+                                only_hits = TRUE){
+  ### This function finds what clusters overlap with a provided list of genes
+  res_mat <- matrix(nrow = sum(unlist(lapply(all_clusters, length))), ncol = 2)
+  rownames(res_mat) <- seq(nrow(res_mat))
+  overall_ind = 1
+  for (tissue_ind in seq_along(all_clusters)) {
+    tiss_name = names(all_clusters)[tissue_ind]
+    cur_tiss <- all_clusters[[tissue_ind]]
+    for (cluster_ind in seq_along(cur_tiss)) {
+      clust_name = names(cur_tiss)[cluster_ind]
+      cur_cluster <- cur_tiss[[cluster_ind]]
+      overlapping_genes <- intersect(cur_cluster, genes_of_int)
+      n_of_overlap <- length(overlapping_genes)
+      ## Naming
+      rownames(res_mat)[overall_ind] = paste(tiss_name, clust_name,sep = "_")
+      res_mat[overall_ind, 1] = n_of_overlap
+      if (length(overlapping_genes) == 0) {
+        overlapping_genes = ""
+      }
+      res_mat[overall_ind, 2] = paste(overlapping_genes, collapse = "; ")
+      
+      overall_ind = overall_ind + 1
+    }
+  }
+  ## Clean up table
+  res_df <- as.data.frame(res_mat)
+  res_df$V1 <- as.numeric(res_df$V1)
+  colnames(res_df) <- c("n_intersect", "found_genes")
+  
+  if (only_hits == TRUE) {
+    res_df <- dplyr::filter(res_df, n_intersect > 0)    
+  }
+  return(res_df)
+}
+
