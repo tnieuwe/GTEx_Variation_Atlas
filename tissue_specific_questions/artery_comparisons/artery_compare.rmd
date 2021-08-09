@@ -23,6 +23,7 @@ tib_genes <- read.csv("../../MARCC output/variance_genes_kendall/kendall-artery_
 cora_genes <- read.csv("../../MARCC output/variance_genes_kendall/kendall-artery_coronary-gene-clusters-high-variance.csv")
 aorta_genes <- read.csv("../../MARCC output/variance_genes_kendall/kendall-artery_aorta-gene-clusters-high-variance.csv") 
 artery_df_list <- list("tibial" = tib_genes, "coronary" = cora_genes, "aorta"= aorta_genes)
+pheno_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
 ```
 
 Turn tables into lists

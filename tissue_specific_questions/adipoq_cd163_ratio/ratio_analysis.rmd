@@ -64,13 +64,14 @@ numeric_dat <- final_dat %>% select(-SUBJID)
 
 cor_mat <- cor(numeric_dat, method = "kendall")
 
-pheatmap(cor_mat)
-art_aort <- temp_dat %>% filter(cur_tiss == "artery_aorta")
+
+art_aort <- pre_final_dat %>% filter(cur_tiss == "artery_aorta")
 
 ggplot(pre_final_dat, aes(ADIPOQ, LPL, color = cur_tiss)) + geom_point(alpha = .5)
 ```
 If we look at the extreme cases of adipoq/cd163 ratio in adipose subc, does this
 ratio carry over in people?
+
 ```{r}
 bot_fat <- final_dat %>% arrange(adipose_subcutaneous)%>%
     filter(!is.na(adipose_subcutaneous)) %>%

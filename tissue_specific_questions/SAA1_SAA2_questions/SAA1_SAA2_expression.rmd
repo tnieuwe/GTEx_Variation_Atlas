@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(DESeq2)
 library(tidyverse)
-source("../global_in/general_scripts.R")
+source("../../global_in/general_scripts.R")
 ```
 
 Select items of interest
@@ -23,15 +23,15 @@ load in data
 ```{r}
 
 ## Load SUBJ data
-phen_dat <- read.csv("../global_in/gtex_phenotypes_v8.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
 ## Load samp data.
-samp_dat <- read.delim("../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt", fill=T,
+samp_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt", fill=T,
                       stringsAsFactors=FALSE, sep="\t", header=T)
 ## Load common subj_dat
-subj_dat <- read.delim("../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt", fill=T,
+subj_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt", fill=T,
                       stringsAsFactors=FALSE, sep="\t", header=T)
 ## Load keys 
-key_dat <- read.csv("../automated_cluster_analysis/data_out/key_table.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 ```
 
 
@@ -51,7 +51,7 @@ final_gene_dat <- NULL
 for (tiss_ind in seq_along(tiss)) {
     tissue <- tiss[tiss_ind]
     abbrev <- cur_keys$abrreviated[tiss_ind]
-    tiss_path <- paste0("../Setup Code/output/",tissue,"-vsd-mean-filtered.rda")
+    tiss_path <- paste0("../../Setup Code/output/",tissue,"-vsd-mean-filtered.rda")
     load(tiss_path)
     if(!all(gtabMeanFiltered$gene_id == rownames(assay(generalVSDMeanFiltered)))){
         stop()
@@ -128,8 +128,11 @@ ggplot(gene_dat, aes(SAA2_ADPSBQ, SAA2_PRSTTE))  +
 ```{r}
 
 gene_dat_ordinal <- mutate(gene_dat, DTHHRDY = factor(DTHHRDY, ordered = TRUE,
-                                                      levels = c("1","2","3","4","0")))
+                                                      levels = c("1","2","3","4","0")),
+                           MHT2D = factor(MHT2D))
 
 summary(lm(SAA1_ADPSBQ ~ DTHHRDY,data = gene_dat_ordinal))
+
+
 ```
 

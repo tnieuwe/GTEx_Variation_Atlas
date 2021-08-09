@@ -14,7 +14,7 @@ source("../../global_in/general_scripts.R")
 Select items of interest
 ```{r}
 ## Tissue R name
-tiss <- "thyroid"
+tiss <- "brain_frontal_cortex__ba9"
 ```
 
 load in data
@@ -69,5 +69,58 @@ ggplot(final_dat, aes_string("DTHHRDY", cluster_that_has_SAA1)) +
     ggforce::geom_sina() +
     labs(title = tiss)
 
+```
+
+```{r}
+ggplot(final_dat, aes_string("TRISCHD", cluster_that_has_SAA1)) +
+   geom_point() +
+    labs(title = tiss)
+
+
+final_dat <- final_dat %>% 
+    mutate(isch_bin = cut(TRISCHD, breaks = quantile(TRISCHD, seq(0,1,.25))),
+           dthvnt_fact = as.factor(DTHVNT),
+           vnt_bin = cut(DTHVNTD, breaks = quantile(DTHVNTD, seq(0,1,.25), na.rm = T)))
+
+ggplot(final_dat, aes_string("vnt_bin", cluster_that_has_SAA1, color = "dthvnt_fact")) +
+   geom_point(alpha = .25) +
+    labs(title = tiss,
+             x = "Ischemic time in minutes")
+
+
+ggplot(final_dat, aes_string("TRISCHD", "D.1", color = "dthvnt_fact")) +
+   geom_point(alpha = .25) +
+    labs(title = tiss,
+             x = "Ischemic time in minutes")
+
+ggplot(final_dat, aes_string("isch_bin", cluster_that_has_SAA1, color = "dthvnt_fact")) +
+   ggforce::geom_sina(alpha = .25) +
+    labs(title = tiss,
+         x = "Ischemic time in minutes binned")
+
+
+
+ggplot(final_dat, aes_string("dthvnt_fact", "B.2", color = "dthvnt_fact")) +
+   ggforce::geom_sina(alpha = .25) +
+    labs(title = tiss,
+         x = "Ischemic time in minutes binned")
+```
+
+```{r}
+
+model_data <- lm(B.2 ~ TRISCHD + dthvnt_fact, data = final_dat)
+summary(model_data)
+
+vent_only <- filter(final_dat, dthvnt_fact == "1")
+
+no_vent <-  filter(final_dat, dthvnt_fact == "0")
+
+
+model_data <- lm(B.2 ~ TRISCHD, data = vent_only)
+summary(model_data)
+
+
+model_data <- lm(B.2 ~ TRISCHD, data = no_vent)
+summary(model_data)
 ```
 
