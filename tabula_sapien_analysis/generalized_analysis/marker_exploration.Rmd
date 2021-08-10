@@ -1,0 +1,136 @@
+---
+title: "marker_exploration"
+author: "Tim Nieuwenhuis"
+date: "8/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+source("../../global_in/general_scripts.R")
+```
+
+```{r}
+marker_data <- read.csv("data_out/master_tabula_table_sans_blood_tabula.csv")
+marker_data_lung <- read.csv("data_out/Lung_marker_genes.csv")
+compartment_cells <- c("immune", "stromal", "epithelial", "endothelial")
+
+## Keys
+key_organs <- read.csv(file = "data_in/ordered_all_tiss_pang_names.csv")
+key_genes <- read.csv(file = "../data_out/labels_and_genes.csv")
+key_master <- read.csv(file = "../data_out/key_table.csv")
+```
+Clean up repeated  intestine and do some exploratory analysis
+```{r}
+marker_dat <- filter(marker_data, tissue != "Small_intestine",
+                     !startsWith(gene_name, "MT-")) %>%
+    mutate(pct_diff = pct.1 - pct.2)
+
+hist(marker_dat$myAUC)
+
+hist(marker_dat$pct.2)
+
+hist(marker_dat$pct.1)
+
+hist(marker_dat$pct_diff)
+
+```
+
+Equation 1
+
+AUC scaled by how low pct.2 is
+```{r}
+test_dat_1 <- mutate(marker_dat,
+                   metric = myAUC/(pct.2 + .1))
+
+hist(test_dat_1$metric)
+
+```
+Equation 2
+
+pct.diff scaled by how low pct.2 is
+```{r}
+test_dat_2 <- mutate(marker_dat,
+                   metric = pct_diff/(pct.2 + .1))
+
+hist(test_dat_2$metric)
+```
+
+```{r}
+test_dat_2 <- mutate(marker_dat,
+                   metric = (myAUC*avg_diff )/(pct.2 + .1))
+
+hist(test_dat_2$metric)
+```
+
+
+
+```{r}
+test_dat_3 <- mutate(marker_dat,
+                   metric = (myAUC/(pct.2 + .10))*avg_diff )
+
+hist(test_dat_3$metric)
+
+```
+
+
+Test if first formula is good
+```{r} 
+lung_genes <- GeneClusterPuller("lung", "../../MARCC output/variance_genes_kendall/")
+
+lung_test <- marker_data_lung %>%
+     mutate(pct_diff = pct.1 - pct.2,
+            metric = myAUC/(pct.2 + .1))
+lung_markers <- lung_test %>%
+    filter(tissue == "Lung",
+           !(cell_type %in% compartment_cells),
+           pct_diff > 0) %>%
+    group_by(gene_name) %>%
+    slice_max(order_by = metric, n = 1)
+
+```
+
+Test current markers
+```{r}
+cluster_names <- names(lung_genes$lung)
+known_cell_types <- unique(lung_markers$cell_type)
+marker_cluster_overlaps <- as.data.frame(matrix(nrow=length(cluster_names), ncol =length(known_cell_types)))
+rownames(marker_cluster_overlaps) <- cluster_names
+colnames(marker_cluster_overlaps) <- known_cell_types
+
+
+
+```
+
+Panglao marker test code
+
+```{r}
+cur_tiss <- "Lung"
+cluster_names <- names(lung_genes$lung)
+known_cell_types <- unique(lung_markers$cell_type)
+tiss_df <- filter(dat_for_analysis, r_names %in% cur_tiss)
+## Select out genes
+temp_markers <- lung_markers
+## Make a matrix to fill out with percent cell type
+## Double the colnames dimensions to include two columns per cell type
+## proportion 
+temp_matrix <- matrix(nrow = length(cluster_names),
+                      ncol = 2 * length(known_cell_types))
+## Make new colnames using sapply
+## create a vector where we duplicate the names and mark if it is
+## proportion column or genes
+new_colnames <- sapply(known_cell_types,function(x){
+    reps <- rep(x,2)
+    reps[1] <- paste0(reps[1], " proportion")
+    reps[2] <- paste0(reps[2], " genes")
+    unlist(reps)
+})
+## Flatten sapply out to fit as colnames
+colnames(temp_matrix) <- as.vector(new_colnames) 
+rownames(temp_matrix) <- tiss_df$label
+```
+

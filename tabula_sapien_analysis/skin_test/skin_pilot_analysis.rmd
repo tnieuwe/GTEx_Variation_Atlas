@@ -1,0 +1,304 @@
+---
+title: "tabula_sapien_skin"
+author: "Tim Nieuwenhuis"
+date: "7/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(Seurat)
+library(SeuratObject)
+library(SeuratDisk)
+library(dplyr)
+```
+Read in non seurat data
+```{r}
+tissues <- c("skin_not_sun_exposed__suprapubic",
+             "skin_sun_exposed__lower_leg")
+source("../../global_in/general_scripts.R")
+skin_genes <- GeneClusterPuller(tissues,"../../MARCC output/variance_genes_kendall/")
+not_sun_genes <- skin_genes$skin_not_sun_exposed__suprapubic
+```
+
+
+Read in seurat data
+```{r}
+SeuratDisk::Convert("data_in/TS_Skin.h5ad", dest = "h5seurat", overwrite = TRUE,assay = "RNA")
+skin_dat <- LoadH5Seurat("data_in/TS_Skin.h5seurat", assays = "RNA")
+```
+Some logic checks on the data
+```{r}
+skin_dat@assays$RNA@counts
+
+skin_dat@active.ident <- skin_dat@meta.data$compartment
+    
+#skin_dat[["percent.mt"]] <- PercentageFeatureSet(skin_dat, pattern = "^MT-")
+skin_dat<- RunUMAP(skin_dat, dims = 1:10)
+DimPlot(skin_dat, reduction = "umap")
+
+```
+
+```{r}
+skin_dat <- NormalizeData(skin_dat,normalization.method = "LogNormalize")
+skin_dat@assays$RNA@misc
+normalized_scores <- skin_dat[["RNA"]]@data
+hist(colSums(normalized_scores))
+```
+Try making skin z-scores for each sample
+```{r}
+test_genes <- not_sun_genes$B.1
+
+gene_ind <- rownames(normalized_scores) %in% test_genes
+cluster_normcounts <- normalized_scores[gene_ind,]
+zscore_matrix <- (cluster_normcounts - rowMeans(cluster_normcounts,na.rm = T))/apply(cluster_normcounts, 1, sd, na.rm = TRUE)
+
+### Remove genes that have an sd of 0
+sd_ind <- apply(cluster_normcounts, 1, sd, na.rm = TRUE) == 0 
+dropped_genes <- rownames(zscore_matrix)[sd_ind]
+zscore_matrix <- zscore_matrix[!sd_ind,]
+z_score_out <- colSums(zscore_matrix)
+joined_dat <- cbind(skin_dat@meta.data, as.data.frame(z_score_out))
+ggplot2::ggplot(joined_dat, ggplot2::aes(free_annotation, z_score_out)) +
+    #ggplot2::geom_violin() +
+    #ggplot2::geom_jitter(alpha = 0.5) +
+    ggforce::geom_sina() +
+    ggplot2::coord_flip()
+```
+
+Make a loop that prints
+
+```{r}
+all_plots <- list()
+for (gene_list_ind in seq_along(not_sun_genes)) {
+    test_genes <- not_sun_genes[[gene_list_ind]]
+    if ("XIST" %in% test_genes) {
+        next
+    }
+    cur_clust_name <- names(not_sun_genes)[gene_list_ind]
+    gene_ind <- rownames(normalized_scores) %in% test_genes
+    cluster_normcounts <- normalized_scores[gene_ind,]
+    zscore_matrix <- (cluster_normcounts - rowMeans(cluster_normcounts,na.rm = T))/apply(cluster_normcounts, 1, sd, na.rm = TRUE)
+    
+    ### Remove genes that have an sd of 0
+    sd_ind <- apply(cluster_normcounts, 1, sd, na.rm = TRUE) == 0 
+    dropped_genes <- rownames(zscore_matrix)[sd_ind]
+    zscore_matrix <- zscore_matrix[!sd_ind,]
+    z_score_out <- colSums(zscore_matrix)
+    joined_dat <- cbind(skin_dat@meta.data, as.data.frame(z_score_out))
+    plot_out <- ggplot2::ggplot(joined_dat, ggplot2::aes(compartment, z_score_out)) +
+        #ggplot2::geom_violin() +
+        #ggplot2::geom_jitter(alpha = 0.5) +
+        ggforce::geom_sina() +
+        ggplot2::coord_flip() +
+        ggplot2::labs(title = cur_clust_name)
+    all_plots[[cur_clust_name]] <- plot_out
+}
+all_plots
+
+```
+
+
+```{r}
+res <- lm(z_score_out ~ compartment - 1, data= joined_dat)
+
+summary(res)
+```
+
+Individual gene spread
+
+```{r}
+single_gene_plots <- list()
+for (gene_list_ind in seq_along(not_sun_genes$F)) {
+    test_genes <- not_sun_genes$F[[gene_list_ind]]
+
+    cur_clust_name <- (not_sun_genes$F)[gene_list_ind]
+    gene_ind <- rownames(normalized_scores) %in% test_genes
+    cluster_normcounts <- normalized_scores[gene_ind,]
+
+
+    joined_dat <- cbind(skin_dat@meta.data, as.data.frame(cluster_normcounts))
+    plot_out <- ggplot2::ggplot(joined_dat, ggplot2::aes(compartment, cluster_normcounts)) +
+        #ggplot2::geom_violin() +
+        #ggplot2::geom_jitter(alpha = 0.5) +
+        ggforce::geom_sina(alpha = 0.5) +
+        ggplot2::coord_flip() +
+        ggplot2::labs(title = cur_clust_name, y = cur_clust_name)
+    single_gene_plots[[cur_clust_name]] <- plot_out
+}
+single_gene_plots
+
+
+## Turn above code into function
+
+ClusterGenePlotter <- function(normalized_scores, cluster){
+    single_gene_plots <- list()
+    for (gene_list_ind in seq_along(not_sun_genes[[cluster]])) {
+        test_genes <- not_sun_genes[[cluster]][[gene_list_ind]]
+    
+        cur_clust_name <- (not_sun_genes[[cluster]])[gene_list_ind]
+        gene_ind <- rownames(normalized_scores) %in% test_genes
+        cluster_normcounts <- normalized_scores[gene_ind,]
+    
+    
+        joined_dat <- cbind(skin_dat@meta.data, as.data.frame(cluster_normcounts))
+        plot_out <- ggplot2::ggplot(joined_dat, ggplot2::aes(compartment, cluster_normcounts)) +
+            #ggplot2::geom_violin() +
+            #ggplot2::geom_jitter(alpha = 0.5) +
+            ggforce::geom_sina(alpha = 0.5) +
+            ggplot2::coord_flip() +
+            ggplot2::labs(title = cur_clust_name, y = cur_clust_name)
+        single_gene_plots[[cur_clust_name]] <- plot_out
+    }
+    return(single_gene_plots)
+}
+
+#ClusterGenePlotter(normalized_scores, "A.1")
+
+pdf(file = "data_out/cluster_b1_genes.pdf",width = 10, height = 10)
+for (plots in single_gene_plots) {
+    print(plots)
+}
+dev.off()
+```
+
+```{r}
+all_none_matrix <- model.matrix(~ compartment - 1, data = joined_dat)
+
+all_strom_samps <- all_none_matrix[,4,drop = FALSE]
+strom_names <- rownames(all_strom_samps)[all_strom_samps == 1]
+nonstrom_name <- rownames(all_strom_samps)[all_strom_samps != 1]
+
+
+strom_res <- FindMarkers(skin_dat,
+            ident.1 = strom_names,
+            ident.2 = nonstrom_name)
+
+hist(strom_res$p_val_adj)
+
+
+compartment_markers <- list()
+for (col_ind in seq(ncol(all_none_matrix))) {
+    cur_cell <- colnames(all_none_matrix)[col_ind]
+    cell_ind <- all_none_matrix[,col_ind] == 1
+    main_cell_names <- rownames(all_none_matrix)[cell_ind]
+    non_cell_names <- rownames(all_none_matrix)[!cell_ind]
+    marker_res <- FindMarkers(skin_dat,
+                              ident.1 = main_cell_names#,
+                              #ident.2 = non_cell_names
+                              )
+    compartment_markers[[cur_cell]] <- marker_res
+}
+
+lapply(compartment_markers, nrow)
+
+sum(rownames(compartment_markers$compartmentendothelial) %in% rownames(compartment_markers$compartmentstromal))
+
+identical(compartment_markers, compartment_markers_2)
+
+for (marker_ind in seq_along(compartment_markers)) {
+    marker_name <- names(compartment_markers)[marker_ind]
+    marker_df <- compartment_markers[[marker_ind]]
+    write.csv(marker_df, paste0("data_out/",marker_name,"_marker_genes.csv"))
+}
+```
+
+```{r}
+
+top_marker_gene_list <- lapply(compartment_markers, function(x){
+    filt_x <- x[x$avg_log2FC > 0,]
+    #filt_x <- head(filt_x, 100)
+    filt_x <- filt_x[filt_x$p_val_adj < 0.05,]
+    return(filt_x)
+})
+
+
+#row.names(top_marker_gene_list$compartmentendothelial) %in% not_sun_genes
+
+cluster_assoc <- NULL
+for (compartment_ind in seq_along(top_marker_gene_list)) {
+    current_compartment <- names(top_marker_gene_list)[compartment_ind]
+    compartment_df <- top_marker_gene_list[[compartment_ind]]
+    out <- lapply(not_sun_genes, function(x){
+        sum(x %in% row.names(compartment_df))/length(x)
+    })
+    
+    new_col <- t(as.data.frame(out))
+    colnames(new_col) = current_compartment
+    cluster_assoc <- cbind(cluster_assoc, new_col)
+}
+
+cluster_assoc
+
+
+strom_endo_intersect <- intersect(rownames(top_marker_gene_list$compartmentendothelial),
+           rownames(top_marker_gene_list$compartmentstromal))
+
+shared_F_genes <- intersect(not_sun_genes$F, strom_endo_intersect)
+
+top_marker_gene_list$compartmentendothelial[rownames(top_marker_gene_list$compartmentendothelial)%in% shared_F_genes,]
+
+top_marker_gene_list$compartmentstromal[rownames(top_marker_gene_list$compartmentstromal)%in% shared_F_genes,]
+```
+
+```{r}
+all_none_matrix <- model.matrix(~ cell_ontology_class - 1, data = joined_dat)
+
+
+cell_ontology_class_markers <- list()
+for (col_ind in seq(ncol(all_none_matrix))) {
+    cur_cell <- colnames(all_none_matrix)[col_ind]
+    cell_ind <- all_none_matrix[,col_ind] == 1
+    main_cell_names <- rownames(all_none_matrix)[cell_ind]
+    non_cell_names <- rownames(all_none_matrix)[!cell_ind]
+    marker_res <- FindMarkers(skin_dat,
+                              ident.1 = main_cell_names#,
+                              #ident.2 = non_cell_names
+                              )
+    cell_ontology_class_markers[[cur_cell]] <- marker_res
+}
+
+lapply(cell_ontology_class_markers, nrow)
+
+sum(rownames(cell_ontology_class_markers$cell_ontology_classendothelial) %in% rownames(cell_ontology_class_markers$cell_ontology_classstromal))
+
+
+for (marker_ind in seq_along(cell_ontology_class_markers)) {
+    marker_name <- names(cell_ontology_class_markers)[marker_ind]
+    marker_df <- cell_ontology_class_markers[[marker_ind]]
+    write.csv(marker_df, paste0("data_out/",marker_name,"_marker_genes.csv"))
+}
+```
+
+
+```{r}
+top_marker_gene_list <- lapply(cell_ontology_class_markers, function(x){
+    filt_x <- x[x$avg_log2FC > 0,]
+    #filt_x <- head(filt_x, 100)
+    filt_x <- filt_x[filt_x$p_val_adj < 0.05,]
+    return(filt_x)
+})
+
+
+#row.names(top_marker_gene_list$compartmentendothelial) %in% not_sun_genes
+
+cluster_assoc <- NULL
+for (compartment_ind in seq_along(top_marker_gene_list)) {
+    current_compartment <- names(top_marker_gene_list)[compartment_ind]
+    compartment_df <- top_marker_gene_list[[compartment_ind]]
+    out <- lapply(not_sun_genes, function(x){
+        sum(x %in% row.names(compartment_df))/length(x)
+    })
+    
+    new_col <- t(as.data.frame(out))
+    colnames(new_col) = current_compartment
+    cluster_assoc <- cbind(cluster_assoc, new_col)
+}
+
+cluster_assoc
+```
+

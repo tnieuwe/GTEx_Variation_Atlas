@@ -1,0 +1,256 @@
+---
+title: "seurat lung analysis"
+author: "Tim Nieuwenhuis"
+date: "7/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(Seurat)
+library(SeuratObject)
+library(SeuratDisk)
+library(dplyr)
+```
+Read in non seurat data
+```{r}
+tissues <- c("lung")
+source("../../global_in/general_scripts.R")
+lung_genes <- GeneClusterPuller(tissues,"../../MARCC output/variance_genes_kendall/")
+```
+
+
+Read in seurat data
+```{r}
+SeuratDisk::Convert("data_in/TS_Lung.h5ad", dest = "h5seurat", overwrite = TRUE,assay = "RNA")
+lung_dat <- LoadH5Seurat("data_in/TS_Lung.h5seurat", assays = "RNA")
+```
+```{r}
+lung_dat@active.ident <- lung_dat@meta.data$compartment
+```
+
+Bronchial hypothesis
+```{r}
+all_none_matrix <- model.matrix(~ free_annotation - 1, data = lung_dat@meta.data)
+colnames(all_none_matrix) <- gsub("free_annotation", "", colnames(all_none_matrix))
+
+cells_of_interest <- c("serous cell of epithelium of bronchus",
+                       "respiratory goblet cell",
+                       "lung ciliated cell")
+result_list <- list()
+for (cell_ind in seq_along(cells_of_interest)) {
+    cur_cell <- cells_of_interest[cell_ind]
+    cell_samps <- rownames(filter(lung_dat@meta.data, free_annotation == cur_cell))
+    markers_res <- FindMarkers(lung_dat, ident.1 = cell_samps)
+    result_list[[cur_cell]] <- markers_res
+}
+
+mucin_genes <- c("MUC4", "MUC5AC", "MUC16", "MUC5B")
+
+result_list$`respiratory goblet cell` %>% tibble::rownames_to_column("genes") %>%
+    filter(p_val_adj < 0.05, genes %in% mucin_genes) 
+
+
+which(rownames(result_list$`respiratory goblet cell`) %in% mucin_genes)
+
+cilia_genes <- c("DNAH9", "DNAI2", "DNAH12", "SPAG17", "DNAH3", "SPAG6", "TEKT1", "TEKT2" )
+
+result_list$`lung ciliated cell` %>% tibble::rownames_to_column("genes") %>%
+    filter(p_val_adj < 0.05, genes %in% cilia_genes) 
+
+which(rownames(result_list$`lung ciliated cell`) %in% cilia_genes)
+
+
+top_cilia <- result_list$`lung ciliated cell` %>%
+    dplyr::mutate(pct_diff = pct.1 - pct.2)
+    dplyr::arrange(desc(pct_diff)) %>%
+    dplyr::filter(p_val_adj == 0)
+write.csv(top_cilia, file = "data_out/top_cilia_genes.csv")
+```
+
+
+```{r}
+all_none_matrix <- model.matrix(~ compartment + free_annotation - 1, data = lung_dat@meta.data)
+
+all_strom_samps <- all_none_matrix[,4,drop = FALSE]
+strom_names <- rownames(all_strom_samps)[all_strom_samps == 1]
+nonstrom_name <- rownames(all_strom_samps)[all_strom_samps != 1]
+
+
+strom_res <- FindMarkers(skin_dat,
+            ident.1 = strom_names,
+            ident.2 = nonstrom_name)
+
+hist(strom_res$p_val_adj)
+
+
+compartment_markers <- list()
+for (col_ind in seq(ncol(all_none_matrix))) {
+    cur_cell <- colnames(all_none_matrix)[col_ind]
+    cell_ind <- all_none_matrix[,col_ind] == 1
+    main_cell_names <- rownames(all_none_matrix)[cell_ind]
+    non_cell_names <- rownames(all_none_matrix)[!cell_ind]
+    marker_res <- FindMarkers(skin_dat,
+                              ident.1 = main_cell_names#,
+                              #ident.2 = non_cell_names
+                              )
+    compartment_markers[[cur_cell]] <- marker_res
+}
+
+lapply(compartment_markers, nrow)
+
+sum(rownames(compartment_markers$compartmentendothelial) %in% rownames(compartment_markers$compartmentstromal))
+
+identical(compartment_markers, compartment_markers_2)
+
+for (marker_ind in seq_along(compartment_markers)) {
+    marker_name <- names(compartment_markers)[marker_ind]
+    marker_df <- compartment_markers[[marker_ind]]
+    write.csv(marker_df, paste0("data_out/",marker_name,"_marker_genes.csv"))
+}
+
+```
+
+
+Rerun above analysis but only look at genes that we have to see if it speeds up calculations.
+```{r}
+
+all_cluster_genes <- unlist(lung_genes)
+names(all_cluster_genes) <- NULL
+
+all_cluster_genes_filt <- all_cluster_genes[all_cluster_genes %in% lung_dat@assays$RNA@meta.features$gene_symbol]
+
+compartment_markers_fast <- list()
+for (col_ind in seq(ncol(all_none_matrix))) {
+    cur_cell <- colnames(all_none_matrix)[col_ind]
+    cell_ind <- all_none_matrix[,col_ind] == 1
+    main_cell_names <- rownames(all_none_matrix)[cell_ind]
+    non_cell_names <- rownames(all_none_matrix)[!cell_ind]
+    marker_res <- FindMarkers(lung_dat,
+                              ident.1 = main_cell_names,
+                              only.pos =TRUE,
+                              features = all_cluster_genes_filt,
+                              test.use =  "roc"#,
+                              #ident.2 = non_cell_names
+                              )
+    compartment_markers_fast[[cur_cell]] <- marker_res
+}
+lapply(compartment_markers_fast, function(x){
+    return(hist(x$p_val_adj))
+})
+
+
+hist(p.adjust(compartment_markers_fast$`lung ciliated cell`$p_val, method = "bonferroni"))
+
+
+marker_table <- NULL
+for (cur_cell_ind in seq_along(compartment_markers_fast)) {
+    cur_cell_name <- names(compartment_markers_fast)[cur_cell_ind]
+    cur_cell <- compartment_markers_fast[[cur_cell_ind]]
+   # cur_cell$p_val_adj <- p.adjust(cur_cell$p_val, method = "bonferroni")
+    #cur_cell <- filter(cur_cell, p_val_adj < 0.05)
+    cur_cell$cell_type <- cur_cell_name
+    cur_cell <- cur_cell %>%
+    tibble::rownames_to_column(var= "gene")
+    marker_table <- rbind(marker_table, cur_cell)
+}
+
+
+marker_table <- mutate(marker_table, diff_pct =  pct.1 - pct.2 ) 
+
+hist(marker_table$myAUC)
+```
+
+Marc idea
+```{r}
+normalized_lung <- NormalizeData(lung_dat)
+
+normalized_lung[["old.ident"]] <- Idents(object = normalized_lung)
+
+Idents(object = normalized_lung) <- normalized_lung@meta.data$free_annotation
+
+normalized_cell_type <- subset(x =normalized_lung, idents = "macrophage")
+summary(rowMeans(normalized_cell_type@assays$RNA@data))
+## Filter so that each at least 10 macrophages are greater than 0
+n_of_genes_with_reads<- apply(normalized_cell_type@assays$RNA@data,MARGIN = 1, function(x){sum(x>0)})
+per_filt <- (n_of_genes_with_reads > 0.10* ncol(normalized_cell_type))
+
+normalized_cell_filt <- normalized_cell_type[five_filt,]
+
+
+pre_plot <- as.data.frame(as.matrix(normalized_cell_filt@assays$RNA@counts))
+
+
+pre_plot$normalized_sum <- rowSums(pre_plot)
+pre_plot$cells_with_expression <- apply(pre_plot,MARGIN = 1, function(x){sum(x>0)})
+pre_plot$percent_exprs <- pre_plot$cells_with_expression/ncol(normalized_cell_filt)
+for_plot <- tibble::rownames_to_column(pre_plot, var ="gene_name")
+ggplot2::ggplot(for_plot, ggplot2::aes(x= normalized_sum, y = percent_exprs)) +
+    ggplot2::geom_text(ggplot2::aes(label = gene_name), alpha = 0.5)
+
+ggplot2::ggplot(for_plot, ggplot2::aes(x= normalized_sum, y = percent_exprs)) +
+    ggplot2::geom_point(alpha = 0.5) 
+
+
+for_plot
+
+```
+Binning idea
+```{r}
+write.csv(select(for_plot, gene_name, percent_exprs, normalized_sum) ,"data_out/outlier_curve_counts.csv", row.names = F)
+
+bin_data <- select(for_plot, gene_name, percent_exprs, normalized_sum)  %>% 
+    mutate(bin = cut(percent_exprs, breaks= seq(0,1, by = 0.05)))
+
+hold_plot <- list()
+outliers <- NULL
+for (cur_bin in unique(bin_data$bin)) {
+    sub_bin <- filter(bin_data, bin == cur_bin)
+    z_3_out <- 3*sd(sub_bin$normalized_sum) + mean(sub_bin$normalized_sum)
+    temp_plot <- ggplot(sub_bin, aes(x = normalized_sum)) +
+        geom_histogram() +
+        geom_vline(xintercept = (z_3_out)) +
+        labs(title = cur_bin)
+    hold_plot[[cur_bin]] <- temp_plot
+    outliers = rbind(outliers, filter(sub_bin, normalized_sum >= z_3_out))
+    
+}
+
+
+bin_data <- mutate(bin_data, outlier = gene_name %in% outliers$gene_name)
+
+
+ggplot(bin_data, aes(normalized_sum,percent_exprs, color = outlier)) +
+    geom_point()
+```
+
+
+Musket plot
+```{r}
+musket_dat <- select(for_plot, gene_name, percent_exprs, normalized_sum) %>%
+    mutate(possible_reads = percent_exprs * ncol(normalized_cell_type),
+           true_over_cell = normalized_sum/possible_reads)
+
+
+ggplot(musket_dat, aes(y= log10(true_over_cell), x = log10(normalized_sum))) +
+    geom_point()+
+    geom_smooth()
+
+ggplot(musket_dat, aes(y= (true_over_cell), x = (normalized_sum))) +
+    geom_point() 
+```
+Pre_corr
+```{r}
+pre_corr <- as.data.frame(as.matrix(normalized_cell_filt@assays$RNA@data))
+ind <- rownames(pre_corr) %in% c("NUPR1", "MCEMP1", "FN1", "CCL18", "INHBA", "CHIT1", "IFI27", "FABP4", "ALOX5AP")
+pre_corr <- pre_corr[ind,]
+
+cor_dat <- cor(t(pre_corr))
+
+pheatmap::pheatmap(cor_dat)
+```
+
