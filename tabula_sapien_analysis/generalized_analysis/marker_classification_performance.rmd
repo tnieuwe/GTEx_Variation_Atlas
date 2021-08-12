@@ -1,0 +1,56 @@
+---
+title: "Marker test"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Load libraries and packages
+```{r}
+library(tidyverse)
+source("global_in/general_scripts.R")
+```
+
+Load data
+```{r}
+cluster_list <- AllGeneClusterPuller("MARCC output/variance_genes_kendall/")
+current_markers <- read.csv("tabula_sapien_analysis/generalized_analysis/data_out/master_tabula_table_sans_blood_tabula.csv")
+```
+
+First run on just lung data
+```{r}
+lung_markers <- filter(current_markers, tissue == "Lung")
+lung_genes <- cluster_list$lung
+markers_df <- lung_markers
+## For each cluster
+uni_cell_types <- unique(lung_markers$cell_type)
+initial_matrix <- matrix(nrow = length(lung_genes),
+                         ncol = length(uni_cell_types) * 2)
+colnames_1 <- paste(uni_cell_types, "prop",sep = "_")
+colnames_2 <- paste(uni_cell_types, "genes",sep = "_")
+colnames(initial_matrix) <- seq(ncol(initial_matrix))
+colnames(initial_matrix)[seq(1,ncol(initial_matrix), by =2)] <- colnames_1
+colnames(initial_matrix)[seq(2,ncol(initial_matrix), by =2)] <- colnames_2
+for (cluster_ind in seq_along(lung_genes)) {
+    cur_genes <- lung_genes[[cluster_ind]]
+    ## For each cell type
+    for (cell_type_ind in seq_along(uni_cell_types)) {
+        cur_cell <- uni_cell_types[cell_type_ind]
+    ## Determine the amount of genes overlapping, proportionally and as a list
+    ##for each cell type
+        cell_markers <- filter(markers_df, cell_type == cur_cell)
+        overlapping_genes <- intersect(cur_genes, cell_markers$gene_name)
+        overlap_prop <- length(overlapping_genes)/length(cur_genes)
+        if (length(overlapping_genes)  == 0) {
+            overlapping_genes <- ""
+        } else{
+            overlapping_genes <- paste(overlapping_genes, collapse  = "; ")
+        }
+        initial_matrix[cluster_ind, (cell_type_ind*2 - 1)] <- overlap_prop
+        initial_matrix[cluster_ind, (cell_type_ind*2)] <- overlapping_genes
+    }
+
+}
+```
+
