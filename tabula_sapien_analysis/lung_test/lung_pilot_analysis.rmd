@@ -179,24 +179,52 @@ summary(rowMeans(normalized_cell_type@assays$RNA@data))
 n_of_genes_with_reads<- apply(normalized_cell_type@assays$RNA@data,MARGIN = 1, function(x){sum(x>0)})
 per_filt <- (n_of_genes_with_reads > 0.10* ncol(normalized_cell_type))
 
-normalized_cell_filt <- normalized_cell_type[five_filt,]
+normalized_cell_filt <- normalized_cell_type[per_filt,]
 
 
-pre_plot <- as.data.frame(as.matrix(normalized_cell_filt@assays$RNA@counts))
+pre_plot <- as.data.frame(as.matrix(normalized_cell_filt@assays$RNA@data))
 
 
 pre_plot$normalized_sum <- rowSums(pre_plot)
 pre_plot$cells_with_expression <- apply(pre_plot,MARGIN = 1, function(x){sum(x>0)})
 pre_plot$percent_exprs <- pre_plot$cells_with_expression/ncol(normalized_cell_filt)
 for_plot <- tibble::rownames_to_column(pre_plot, var ="gene_name")
-ggplot2::ggplot(for_plot, ggplot2::aes(x= normalized_sum, y = percent_exprs)) +
-    ggplot2::geom_text(ggplot2::aes(label = gene_name), alpha = 0.5)
+# ggplot2::ggplot(for_plot, ggplot2::aes(x= normalized_sum, y = percent_exprs)) +
+#     ggplot2::geom_text(ggplot2::aes(label = gene_name), alpha = 0.5)
 
 ggplot2::ggplot(for_plot, ggplot2::aes(x= normalized_sum, y = percent_exprs)) +
     ggplot2::geom_point(alpha = 0.5) 
 
 
 for_plot
+
+### Read in macrophage markers
+macro_table <- read.csv("data_in/macrophage_markers_test.csv",header = F)
+macro_genes <- unique(unlist(macro_table))
+
+for_plot <- for_plot %>% mutate(macro_mark = gene_name %in% macro_genes)
+
+for_plot_mark <- filter(for_plot, macro_mark == TRUE)
+for_plot_other <- filter(for_plot, macro_mark == FALSE)
+
+ggplot(for_plot, aes(normalized_sum, percent_exprs, color = macro_mark)) +
+geom_point(data = for_plot_other, alpha= 0.5) +
+    geom_text(data = for_plot_mark, aes(label = gene_name))
+
+
+### Macrophage markers attempt 2
+macro_table <- read.csv("data_in/macrophage_better_markers.csv",header = T)
+macro_genes <- macro_table$Gene
+
+for_plot <- for_plot %>% mutate(macro_mark = gene_name %in% macro_genes)
+
+for_plot_mark <- filter(for_plot, macro_mark == TRUE)
+for_plot_other <- filter(for_plot, macro_mark == FALSE)
+
+ggplot(for_plot, aes(normalized_sum, percent_exprs, color = macro_mark)) +
+geom_point(data = for_plot_other, alpha= 0.5) +
+    geom_point(data = for_plot_mark) 
+
 
 ```
 Binning idea
@@ -252,5 +280,12 @@ pre_corr <- pre_corr[ind,]
 cor_dat <- cor(t(pre_corr))
 
 pheatmap::pheatmap(cor_dat)
+```
+
+
+```{r}
+all_gene_list <- AllGeneClusterPuller(location = "../../MARCC output/variance_genes_kendall/")
+
+ClusterGeneOverlaps(macro_genes,all_gene_list) %>% arrange(desc(n_intersect))
 ```
 
