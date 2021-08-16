@@ -51,7 +51,7 @@ Clean and join data
 Join_data
 ```{r}
 final_dat <- clust_profs %>% rownames_to_column(var = "SAMPID") %>%
-    mutate(SUBJID = GTEx_SAMPID_to_SUBJIUD(SAMPID)) %>%
+    mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
     left_join(phen_dat, by = "SUBJID") %>%
     left_join(samp_dat, by = "SAMPID") 
 
