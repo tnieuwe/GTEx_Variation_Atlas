@@ -11,6 +11,9 @@ library(tidyverse)
 ```
 
 ```{r}
+
+
+
 list_dat <- sapply(tiss_list, function(x){
     ## Go through list to load in files
     load_file <-  paste0("../MARCC output/variance_genes_kendall/kendall-",
@@ -66,7 +69,7 @@ list_dat <- sapply(tiss_list, function(x){
 
 Genes of interest
 ```{r}
-genes_o_int <- c("SAA1", "SAA2")
+genes_o_int <- c("SAA1", "HBA1")
 ```
 
 Get genes most commonly shared
