@@ -15,7 +15,7 @@ source("../global_in/general_scripts.R")
 Select items of interest
 ```{r}
 ## Tissue R name
-tiss <- "lung"
+tiss <- c("lung")
 genes <- c("SAA1", "SAA2")
 ```
 
