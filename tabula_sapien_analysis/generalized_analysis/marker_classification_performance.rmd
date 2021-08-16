@@ -134,16 +134,18 @@ Run on all available data
 
 ```{r}
 
+## Create the metric so we can filter the marker genes
 current_markers <- mutate(current_markers,
                           pct_diff = pct.1 - pct.2,
                           metric = myAUC/(pct.2 + .1)
                           ) %>%
   filter(pct_diff > 0)
-
+## Filter the key to only include tissues that have tabula sapien analogs
 filt_tab_key <- filter(tab_gtex_key, (tabula_sapiens %in% 
                                          c(unique(current_markers$tissue))))
 
 for (tissue_ind in seq(nrow(filt_tab_key))) {
+  ## Prepare names and filter down the markers to the tissues of interests
   current_gtex_tissue <- filt_tab_key$r_names[tissue_ind]
   current_tabula_tissue <- unlist(
     str_split(filt_tab_key$tabula_sapiens[tissue_ind],pattern = " & ")
@@ -156,16 +158,20 @@ for (tissue_ind in seq(nrow(filt_tab_key))) {
   
   compartments <- c("endothelial", "immune", "epithelial", "stromal")
   start_comp <- paste0("^", compartments,"$")
-  ## For each cluster
+  ## Get a list of unique cell types to create the initial matrix we'll fill
   uni_cell_types <- unique(markers_df$cell_type)
+  ## the "* 2" is so we can have a proportional column and a string list of 
+  ## gene column
   initial_matrix <- matrix(nrow = length(tissue_genes),
                            ncol = length(uni_cell_types) * 2)
+  ## Name preperation
   colnames_1 <- paste(uni_cell_types, "prop",sep = "_")
   colnames_2 <- paste(uni_cell_types, "genes",sep = "_")
   colnames(initial_matrix) <- seq(ncol(initial_matrix))
   colnames(initial_matrix)[seq(1,ncol(initial_matrix), by =2)] <- colnames_1
   colnames(initial_matrix)[seq(2,ncol(initial_matrix), by =2)] <- colnames_2
   initial_df <- as.data.frame(initial_matrix)
+  ## For each grouping of genes in a tissue
   for (cluster_ind in seq_along(tissue_genes)) {
       cur_genes <- tissue_genes[[cluster_ind]]
       ## For each cell type
@@ -181,26 +187,31 @@ for (tissue_ind in seq(nrow(filt_tab_key))) {
           } else{
               overlapping_genes <- paste(overlapping_genes, collapse  = "; ")
           }
+          ## Insert data into correct column
           initial_df[cluster_ind, (cell_type_ind*2 - 1)] <- overlap_prop
           initial_df[cluster_ind, (cell_type_ind*2)] <- overlapping_genes
       }
   
   }
-  
+  ## Create a numerical index and split the proportions out from the strings
+  ## The proportional matrix will be uised in futher calculations
   numeric_ind <- sapply(initial_df, class) == "numeric"
   numeric_matrix <- as.matrix(initial_df[,numeric_ind])
   character_df <- initial_df[,!numeric_ind]
   all_marker_genes <- markers_df$gene_name
+  ## The below code removes cellular compartments from gene counts
   Pattern = paste(start_comp, collapse="|")
   no_comp_marker_genes <- markers_df[!grepl(Pattern,
                                                  markers_df$cell_type),]$gene_name
   # no_comp_marker_genes <- markers_df[!str_detect(markers_df$cell_type,
   #                                                start_comp),]$gene_name
+  ## Prepare empty vectors to be cbinded back into the dataframe
   top_cell_types <- rep(NA, length(tissue_genes))
   n_of_genes_considered_marker <- rep(NA, length(tissue_genes))
   n_of_gene_in_cluster <- rep(NA, length(tissue_genes))
   n_of_repeat_genes <- rep(NA, length(tissue_genes))
   max_percent <- rep(NA, length(tissue_genes))
+  ## For each cluster calcualte the required values represented by vectors above
   for (cluster_ind in seq_along(tissue_genes)) {
       top_cells <- str_replace(names(head(sort(numeric_matrix[cluster_ind,],
                                                decreasing = T))),
