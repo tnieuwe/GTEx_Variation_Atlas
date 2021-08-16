@@ -9,31 +9,41 @@ knitr::opts_chunk$set(echo = TRUE)
 Load libraries and packages
 ```{r}
 library(tidyverse)
-source("global_in/general_scripts.R")
+source("../../global_in/general_scripts.R")
+
 ```
 
 Load data
 ```{r}
-cluster_list <- AllGeneClusterPuller("MARCC output/variance_genes_kendall/")
-current_markers <- read.csv("tabula_sapien_analysis/generalized_analysis/data_out/master_tabula_table_sans_blood_tabula.csv")
+## All clusters
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+## The current marker list
+current_markers <- read.csv("data_out/master_tabula_table_sans_blood_tabula.csv")
+## tabula to gtex key
+tab_gtex_key <- read.csv("../../global_in/general_tissues_tabula_mkh.csv")
 ```
 
 First run on just lung data
 ```{r}
+tissue = "lung"
 lung_markers <- filter(current_markers, tissue == "Lung")
 lung_genes <- cluster_list$lung
+tissue_genes <- lung_genes
 markers_df <- lung_markers
+compartments <- c("endothelial", "immune", "epithelial", "stromal")
+start_comp <- paste0("^", compartments,"$")
 ## For each cluster
 uni_cell_types <- unique(lung_markers$cell_type)
-initial_matrix <- matrix(nrow = length(lung_genes),
+initial_matrix <- matrix(nrow = length(tissue_genes),
                          ncol = length(uni_cell_types) * 2)
 colnames_1 <- paste(uni_cell_types, "prop",sep = "_")
 colnames_2 <- paste(uni_cell_types, "genes",sep = "_")
 colnames(initial_matrix) <- seq(ncol(initial_matrix))
 colnames(initial_matrix)[seq(1,ncol(initial_matrix), by =2)] <- colnames_1
 colnames(initial_matrix)[seq(2,ncol(initial_matrix), by =2)] <- colnames_2
-for (cluster_ind in seq_along(lung_genes)) {
-    cur_genes <- lung_genes[[cluster_ind]]
+initial_df <- as.data.frame(initial_matrix)
+for (cluster_ind in seq_along(tissue_genes)) {
+    cur_genes <- tissue_genes[[cluster_ind]]
     ## For each cell type
     for (cell_type_ind in seq_along(uni_cell_types)) {
         cur_cell <- uni_cell_types[cell_type_ind]
@@ -47,10 +57,190 @@ for (cluster_ind in seq_along(lung_genes)) {
         } else{
             overlapping_genes <- paste(overlapping_genes, collapse  = "; ")
         }
-        initial_matrix[cluster_ind, (cell_type_ind*2 - 1)] <- overlap_prop
-        initial_matrix[cluster_ind, (cell_type_ind*2)] <- overlapping_genes
+        initial_df[cluster_ind, (cell_type_ind*2 - 1)] <- overlap_prop
+        initial_df[cluster_ind, (cell_type_ind*2)] <- overlapping_genes
     }
 
+}
+
+numeric_ind <- sapply(initial_df, class) == "numeric"
+numeric_matrix <- as.matrix(initial_df[,numeric_ind])
+character_df <- initial_df[,!numeric_ind]
+all_marker_genes <- markers_df$gene_name
+no_comp_marker_genes <- markers_df[!str_detect(markers_df$cell_type, start_comp),]$gene_name
+top_cell_types <- rep(NA, length(tissue_genes))
+n_of_genes_considered_marker <- rep(NA, length(tissue_genes))
+n_of_gene_in_cluster <- rep(NA, length(tissue_genes))
+n_of_repeat_genes <- rep(NA, length(tissue_genes))
+for (cluster_ind in seq_along(tissue_genes)) {
+    top_cells <- str_replace(names(head(sort(numeric_matrix[cluster_ind,],decreasing = T))),
+                   pattern = "_prop",
+                   "")
+    top_cells <- paste(top_cells, collapse = "; ")
+    ## N of genes considered markers
+    cur_genes <- tissue_genes[[cluster_ind]]
+    n_of_genes_considered_marker_pre <- sum(cur_genes %in% unique(no_comp_marker_genes))
+    n_of_gene_in_cluster_pre <- length(cur_genes)
+    b4_repeat <- (duplicated(no_comp_marker_genes[no_comp_marker_genes %in% cur_genes]))
+    n_of_repeat_genes_pre <- length(
+        unique(
+            no_comp_marker_genes[no_comp_marker_genes %in% cur_genes][b4_repeat]
+            )
+        )
+    if (n_of_genes_considered_marker_pre == 0) {
+      top_cells <- ""
+    }
+    
+    ## Prepare columns
+    top_cell_types[cluster_ind] <- top_cells
+    n_of_genes_considered_marker[cluster_ind] <- n_of_genes_considered_marker_pre
+    n_of_gene_in_cluster[cluster_ind] <- n_of_gene_in_cluster_pre
+    n_of_repeat_genes[cluster_ind] <- n_of_repeat_genes_pre
+}
+
+clusters <- names(tissue_genes)
+
+final_df <- cbind(clusters,
+                  top_cell_types,
+      n_of_genes_considered_marker,
+      n_of_gene_in_cluster,
+      n_of_repeat_genes,
+      select(initial_df, starts_with(compartments), everything())) 
+write.csv(final_df,
+          paste0("data_out/tissue_comparisons/",
+                 tissue, "_tabula_sapiens_markers.csv"),row.names = F)
+
+```
+
+
+See how to filter lung data
+```{r}
+lung_markers <- mutate(lung_markers,
+                          pct_diff = pct.1 - pct.2,
+                          metric = myAUC/(pct.2 + .1),
+                       xist_gene = gene_name == "XIST"
+                          ) 
+
+ggplot(lung_markers, aes(x = metric, fill = xist_gene)) +geom_histogram() +
+  geom_vline(xintercept = quantile(lung_markers$metric, .1))
+
+
+
+```
+
+
+
+Run on all available data
+
+```{r}
+
+current_markers <- mutate(current_markers,
+                          pct_diff = pct.1 - pct.2,
+                          metric = myAUC/(pct.2 + .1)
+                          ) %>%
+  filter(pct_diff > 0)
+
+filt_tab_key <- filter(tab_gtex_key, (tabula_sapiens %in% 
+                                         c(unique(current_markers$tissue))))
+
+for (tissue_ind in seq(nrow(filt_tab_key))) {
+  current_gtex_tissue <- filt_tab_key$r_names[tissue_ind]
+  current_tabula_tissue <- unlist(
+    str_split(filt_tab_key$tabula_sapiens[tissue_ind],pattern = " & ")
+    )
+  current_tabula_tissue <- gsub(" ", "_", current_tabula_tissue)
+  tissue_genes <- cluster_list[[current_gtex_tissue]]
+  markers_df <- filter(current_markers, tissue %in% current_tabula_tissue)
+  ## Filter on metric
+  markers_df <- filter(markers_df, metric >= quantile(metric, .50))
+  
+  compartments <- c("endothelial", "immune", "epithelial", "stromal")
+  start_comp <- paste0("^", compartments,"$")
+  ## For each cluster
+  uni_cell_types <- unique(markers_df$cell_type)
+  initial_matrix <- matrix(nrow = length(tissue_genes),
+                           ncol = length(uni_cell_types) * 2)
+  colnames_1 <- paste(uni_cell_types, "prop",sep = "_")
+  colnames_2 <- paste(uni_cell_types, "genes",sep = "_")
+  colnames(initial_matrix) <- seq(ncol(initial_matrix))
+  colnames(initial_matrix)[seq(1,ncol(initial_matrix), by =2)] <- colnames_1
+  colnames(initial_matrix)[seq(2,ncol(initial_matrix), by =2)] <- colnames_2
+  initial_df <- as.data.frame(initial_matrix)
+  for (cluster_ind in seq_along(tissue_genes)) {
+      cur_genes <- tissue_genes[[cluster_ind]]
+      ## For each cell type
+      for (cell_type_ind in seq_along(uni_cell_types)) {
+          cur_cell <- uni_cell_types[cell_type_ind]
+      ## Determine the amount of genes overlapping, proportionally and as a list
+      ##for each cell type
+          cell_markers <- filter(markers_df, cell_type == cur_cell)
+          overlapping_genes <- intersect(cur_genes, cell_markers$gene_name)
+          overlap_prop <- length(overlapping_genes)/length(cur_genes)
+          if (length(overlapping_genes)  == 0) {
+              overlapping_genes <- ""
+          } else{
+              overlapping_genes <- paste(overlapping_genes, collapse  = "; ")
+          }
+          initial_df[cluster_ind, (cell_type_ind*2 - 1)] <- overlap_prop
+          initial_df[cluster_ind, (cell_type_ind*2)] <- overlapping_genes
+      }
+  
+  }
+  
+  numeric_ind <- sapply(initial_df, class) == "numeric"
+  numeric_matrix <- as.matrix(initial_df[,numeric_ind])
+  character_df <- initial_df[,!numeric_ind]
+  all_marker_genes <- markers_df$gene_name
+  Pattern = paste(start_comp, collapse="|")
+  no_comp_marker_genes <- markers_df[!grepl(Pattern,
+                                                 markers_df$cell_type),]$gene_name
+  # no_comp_marker_genes <- markers_df[!str_detect(markers_df$cell_type,
+  #                                                start_comp),]$gene_name
+  top_cell_types <- rep(NA, length(tissue_genes))
+  n_of_genes_considered_marker <- rep(NA, length(tissue_genes))
+  n_of_gene_in_cluster <- rep(NA, length(tissue_genes))
+  n_of_repeat_genes <- rep(NA, length(tissue_genes))
+  max_percent <- rep(NA, length(tissue_genes))
+  for (cluster_ind in seq_along(tissue_genes)) {
+      top_cells <- str_replace(names(head(sort(numeric_matrix[cluster_ind,],
+                                               decreasing = T))),
+                     pattern = "_prop",
+                     "")
+      top_cells <- paste(top_cells, collapse = "; ")
+      ## N of genes considered markers
+      cur_genes <- tissue_genes[[cluster_ind]]
+      n_of_genes_considered_marker_pre <- sum(cur_genes %in% unique(no_comp_marker_genes))
+      n_of_gene_in_cluster_pre <- length(cur_genes)
+      b4_repeat <- (duplicated(no_comp_marker_genes[no_comp_marker_genes %in% cur_genes]))
+      n_of_repeat_genes_pre <- length(
+          unique(
+              no_comp_marker_genes[no_comp_marker_genes %in% cur_genes][b4_repeat]
+              )
+          )
+      if (n_of_genes_considered_marker_pre == 0) {
+        top_cells <- ""
+      }
+      
+      ## Prepare columns
+      top_cell_types[cluster_ind] <- top_cells
+      max_percent[cluster_ind] <- max(numeric_matrix[cluster_ind,])
+      n_of_genes_considered_marker[cluster_ind] <- n_of_genes_considered_marker_pre
+      n_of_gene_in_cluster[cluster_ind] <- n_of_gene_in_cluster_pre
+      n_of_repeat_genes[cluster_ind] <- n_of_repeat_genes_pre
+  }
+  
+  clusters <- names(tissue_genes)
+  
+  final_df <- cbind(clusters,
+                    top_cell_types,
+                    max_percent,
+        n_of_genes_considered_marker,
+        n_of_gene_in_cluster,
+        n_of_repeat_genes,
+        select(initial_df, starts_with(compartments), everything())) 
+  write.csv(final_df,
+            paste0("data_out/tissue_comparisons/",
+                   current_gtex_tissue, "_tabula_sapiens_markers.csv"),row.names = F)
 }
 ```
 
