@@ -20,7 +20,7 @@ marker_data_lung <- read.csv("data_out/Lung_marker_genes.csv")
 compartment_cells <- c("immune", "stromal", "epithelial", "endothelial")
 
 ## Keys
-key_organs <- read.csv(file = "data_in/ordered_all_tiss_pang_names.csv")
+#key_organs <- read.csv(file = "../data_in/ordered_all_tiss_pang_names.csv")
 key_genes <- read.csv(file = "../data_out/labels_and_genes.csv")
 key_master <- read.csv(file = "../data_out/key_table.csv")
 ```
@@ -45,10 +45,17 @@ Equation 1
 AUC scaled by how low pct.2 is
 ```{r}
 test_dat_1 <- mutate(marker_dat,
-                   metric = myAUC/(pct.2 + .1))
+                   metric = myAUC/(pct.2 + .1),
+                   xist_gene = gene_name %in% "XIST")
 
 hist(test_dat_1$metric)
+ggplot(test_dat_1, aes(x = metric, fill = xist_gene)) +
+    geom_histogram()
 
+test_dat_filt <- filter(test_dat_1, pct_diff > 0)
+
+ggplot(test_dat_filt, aes(x = metric, fill = xist_gene)) +
+    geom_histogram()
 ```
 Equation 2
 
