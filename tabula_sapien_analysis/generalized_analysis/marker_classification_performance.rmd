@@ -144,6 +144,11 @@ current_markers <- mutate(current_markers,
 filt_tab_key <- filter(tab_gtex_key, (tabula_sapiens %in% 
                                          c(unique(current_markers$tissue))))
 
+
+
+proportion_option = "cell_type"
+#proportion_option = "cluster"
+
 for (tissue_ind in seq(nrow(filt_tab_key))) {
   ## Prepare names and filter down the markers to the tissues of interests
   current_gtex_tissue <- filt_tab_key$r_names[tissue_ind]
@@ -181,7 +186,16 @@ for (tissue_ind in seq(nrow(filt_tab_key))) {
       ##for each cell type
           cell_markers <- filter(markers_df, cell_type == cur_cell)
           overlapping_genes <- intersect(cur_genes, cell_markers$gene_name)
-          overlap_prop <- length(overlapping_genes)/length(cur_genes)
+          ## Two types of possible proportions, proportions of marker genes per
+          ## cell type or proportion of marker genes per cluster.
+          if (proportion_option == "cluster") {
+            overlap_prop <- length(overlapping_genes)/length(cur_genes)
+          } else if (proportion_option == "cell_type") {
+            overlap_prop <- length(overlapping_genes)/nrow(cell_markers)
+          } else{
+            stop()
+          }
+          
           if (length(overlapping_genes)  == 0) {
               overlapping_genes <- ""
           } else{
@@ -251,7 +265,8 @@ for (tissue_ind in seq(nrow(filt_tab_key))) {
         select(initial_df, starts_with(compartments), everything())) 
   write.csv(final_df,
             paste0("data_out/tissue_comparisons/",
-                   current_gtex_tissue, "_tabula_sapiens_markers.csv"),row.names = F)
+                   current_gtex_tissue, "_tabula_sapiens_markers_",
+                   "prop_type_", proportion_option,".csv"),row.names = F)
 }
 ```
 
