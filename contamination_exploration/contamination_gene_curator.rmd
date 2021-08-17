@@ -1,0 +1,61 @@
+---
+title: "gene_contamination_classifier"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+```
+## Load data
+```{r}
+tpm_dat <- readr::read_tsv("data_in/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct",skip = 2)
+key_dat <- read.csv("../automated_cluster_analysis/data_out/key_table.csv") %>%
+    select(abrreviated, r_names, official_name) %>% unique()
+list_all_genes <- AllGeneClusterPuller("../MARCC output/variance_genes_kendall/")
+```
+
+Combine similair tissues
+```{r}
+combine_tiss <- c("Heart", "Adipose", "Skin")
+tpm_compressed <- tpm_dat
+for (tiss_start in combine_tiss) {
+    pre_combined_dat <- tpm_dat %>% select(starts_with(tiss_start))
+    combined_dat <- apply(pre_combined_dat, 1, max)
+    tpm_compressed <- tpm_compressed[,!startsWith(colnames(tpm_compressed), tiss_start)]
+    tpm_compressed <- cbind(tpm_compressed, combined_dat)
+    colnames(tpm_compressed)[ncol(tpm_compressed)] <- paste0(tolower(tiss_start),
+                                                             "_combined")
+}
+
+r_names <- key_dat$r_names[match(colnames(tpm_compressed), key_dat$official_name)]
+colnames(tpm_compressed)[!is.na(r_names)] <- r_names[!is.na(r_names)]
+```
+
+Make a numeric df for calculation
+```{r}
+numeric_tpm <- tpm_compressed[,-1:-2]
+rownames(numeric_tpm) <- tpm_compressed$gene_id
+
+## test on PRSS1
+sum(as.vector(numeric_tpm[tpm_compressed$Description == "PRSS1",]) > 1000)
+
+
+unique_gene_index <- apply(numeric_tpm, 1, function(x){
+    sum(x>1000) == 1 & median(x) < 10
+})
+
+cur_unique_genes <- tpm_compressed$Description[unique_gene_index]
+
+```
+
+Compare with clusters
+```{r}
+results <- ClusterGeneOverlaps(cur_unique_genes,list_all_genes)
+write.csv(results, "data_out/possible_contamination_overlap.csv")
+```
+
