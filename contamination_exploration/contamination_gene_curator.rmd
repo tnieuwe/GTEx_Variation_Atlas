@@ -10,11 +10,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
+source("../global_in/general_scripts.R")
 ```
 ## Load data
 ```{r}
-tpm_dat <- readr::read_tsv("data_in/GTEx_Analysis_2016-01-15_v7_RNASeQCv1.1.8_gene_median_tpm.gct",skip = 2)
-key_dat <- read.csv("../automated_cluster_analysis/data_out/key_table.csv") %>%
+tpm_dat <- readr::read_tsv("data_in/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct",skip = 2)
+
+key_dat_labels <- read.csv("../automated_cluster_analysis/data_out/key_table.csv") 
+key_dat <- key_dat_labels %>%
     select(abrreviated, r_names, official_name) %>% unique()
 list_all_genes <- AllGeneClusterPuller("../MARCC output/variance_genes_kendall/")
 ```
@@ -44,18 +47,56 @@ rownames(numeric_tpm) <- tpm_compressed$gene_id
 ## test on PRSS1
 sum(as.vector(numeric_tpm[tpm_compressed$Description == "PRSS1",]) > 1000)
 
-
+## Maybe add a mean filter to avoid situations like JCHAIN
 unique_gene_index <- apply(numeric_tpm, 1, function(x){
-    sum(x>1000) == 1 & median(x) < 10
+    ind_1000 = x>1000
+    median_value = median(x)
+    no_max_x <- x[!ind_1000]
+    ## Logic explanation
+    ## The total number of tissues with high values must be between 1 and 2
+    ## AND the median value of all tissues should be less than 10 tpm
+    ## AND the mean of the non-high expression values must be less than 50 tpm
+    (sum(ind_1000) >= 1 & sum(ind_1000) <= 2) & (median_value < 10 & mean(no_max_x) < 50)
 })
 
 cur_unique_genes <- tpm_compressed$Description[unique_gene_index]
+
+
 
 ```
 
 Compare with clusters
 ```{r}
-results <- ClusterGeneOverlaps(cur_unique_genes,list_all_genes)
+results <- ClusterGeneOverlaps(cur_unique_genes,list_all_genes,only_hits = F)
 write.csv(results, "data_out/possible_contamination_overlap.csv")
+```
+
+Why classic genes drop out
+```{r}
+classic_contam = c("CELA3A","REG1A","CPB1",'ALB',
+                   "PGC","CPA1","PRSS1",'PRSS2','LIPF','PNLIP', "GP2")
+drops <- classic_contam[!(classic_contam %in% cur_unique_genes)]
+
+ind <- tpm_compressed$Description %in% drops
+drop_df <- numeric_tpm[ind,]
+median(unlist(drop_df))
+max(unlist(drop_df))
+
+reg1a <- unlist(drop_df)
+  (sum(reg1a>1000) >= 1 | sum(reg1a>1000) <= 2) & median(x) < 10
+```
+
+Calculate percent contamination for each gene
+```{r}
+## Use key table to make results usable with manual curation labels
+results$label <- key_dat_labels$label
+
+##
+man_cur <- read.csv("../manual_cluster_analysis/manual_curation.csv")
+man_cur <- man_cur %>% mutate(total_genes = str_count(genes,";") + 1)
+
+man_cur <- man_cur %>% left_join(results) %>%
+    mutate(prop_contam = n_intersect/total_genes)
+
 ```
 
