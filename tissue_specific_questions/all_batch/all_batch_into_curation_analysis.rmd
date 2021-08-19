@@ -33,11 +33,26 @@ ischemic_joined <- left_join(ischemic_dat, cur_keys, by = c("tissue", "cluster")
 ```
 Mark curation dat if sig_columns exist in 
 ```{r}
-sig_ischemic <- filter(ischemic_joined, p_adj < 0.05)
-sig_sex <- filter(sex_joined, p_adj < 0.05)
+sig_ischemic <- filter(ischemic_joined, p_adj < 0.05) %>%
+    select(label,isch_estimate = estimate)
+sig_sex <- filter(sex_joined, p_adj < 0.05)%>%
+    select(label,sex_estimate = estimate)
 
-curation_dat$ischemic_sig <- curation_dat$label %in% sig_ischemic$label
-curation_dat$sex_sig <- curation_dat$label %in% sig_sex$label
+curation_dat <- curation_dat %>% left_join(sig_ischemic) %>% left_join(sig_sex)
+curation_dat <- curation_dat %>% mutate(ischemic_sig = case_when(
+    isch_estimate > 0 ~ "positive_corr",
+    isch_estimate < 0 ~ "negative_corr",
+    TRUE ~ "no_corr"),
+    sex_sig = case_when(
+        sex_estimate > 0 ~ "positive_corr",
+        sex_estimate < 0 ~ "negative_corr",
+        TRUE ~ "no_corr"
+        )
+    ) %>% select(-sex_estimate, -isch_estimate)
+
+
+# curation_dat$ischemic_sig <- curation_dat$label %in% sig_ischemic$label
+# curation_dat$sex_sig <- curation_dat$label %in% sig_sex$label
 
 write.csv(curation_dat, file = "../../manual_cluster_analysis/manual_curation.csv",row.names = F)
 ```
