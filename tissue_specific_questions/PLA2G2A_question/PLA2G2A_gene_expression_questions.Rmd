@@ -1,0 +1,147 @@
+---
+title: "question_maker"
+author: "Tim Nieuwenhuis"
+date: "6/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(tidyverse)
+source("../../global_in/general_scripts.R")
+```
+
+Select items of interest
+```{r}
+## Tissue R name
+tiss <- c("liver")
+genes <- c("PLA2G2A", "KNDC1", "SAA1")
+```
+
+load in data
+```{r}
+
+## Load SUBJ data
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+## Load samp data.
+samp_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt", fill=T,
+                      stringsAsFactors=FALSE, sep="\t", header=T)
+## Load common subj_dat
+subj_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt", fill=T,
+                      stringsAsFactors=FALSE, sep="\t", header=T)
+## Load keys 
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+
+## Load sample data
+
+Clean and join data
+
+
+Load and join each tissue
+```{r}
+cur_keys <- key_dat %>% filter(r_names %in% tiss) %>% select(abrreviated, r_names, official_name) %>%
+    unique()
+cur_keys <- cur_keys[order(tiss, cur_keys$r_names),]
+
+
+final_gene_dat <- NULL
+for (tiss_ind in seq_along(tiss)) {
+    tissue <- tiss[tiss_ind]
+    abbrev <- cur_keys$abrreviated[tiss_ind]
+    tiss_path <- paste0("../../Setup Code/output/",tissue,"-vsd-mean-filtered.rda")
+    load(tiss_path)
+    if(!all(gtabMeanFiltered$gene_id == rownames(assay(generalVSDMeanFiltered)))){
+        stop()
+    }
+    ind <- gtabMeanFiltered$gene_name %in% genes
+    final_gtab <- gtabMeanFiltered[ind,]
+    gene_dat <- t(assay(generalVSDMeanFiltered)[ind,])
+    colnames(gene_dat) <- final_gtab$gene_name
+    if (length(tiss) > 1) {
+        gene_dat <- cbind(as.data.frame(gene_dat), tissue)
+    if (is.null(final_gene_dat)) {
+        final_gene_dat <- gene_dat
+        next
+        }
+    final_gene_dat <- rbind(final_gene_dat, gene_dat)
+    } else{
+        colnames(gene_dat) <-final_gtab$gene_name
+        gene_dat <- rownames_to_column(as.data.frame(gene_dat), var = "SAMPID")
+        final_gene_dat <- gene_dat
+    }
+
+}
+gene_dat <- final_gene_dat %>% rownames_to_column(var = "SAMPID") %>%
+    mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
+
+```
+
+
+
+```{r}
+
+## Add phen dat
+gene_dat <- left_join(gene_dat, phen_dat, by = "SUBJID")
+## Samp dat
+
+gene_dat <- left_join(gene_dat, samp_dat, by = "SAMPID")
+
+
+```
+Answer questions below
+```{r}
+ggplot(gene_dat, aes(x= AGE, y =PLA2G2A)) +
+    geom_point() 
+
+
+ggplot(gene_dat, aes(x= , y =KNDC1)) +
+    geom_violin() 
+
+plots <- list()
+for (tiss_ind in seq_along(unique(gene_dat$tissue))) {
+    cur_tiss <- unique(gene_dat$tissue)[tiss_ind]
+    temp_dat <- filter(gene_dat, tissue == cur_tiss)
+    plt <- ggplot(temp_dat, aes(x= as.factor(DTHHRDY), y =PLA2G2A)) +
+    geom_violin() +
+    labs(title = cur_tiss)
+    plots[[cur_tiss]] <- plt
+}
+plots
+```
+## This is probably related to Hardy score
+
+
+```{r}
+passed_genes <- genes[genes %in% colnames(gene_dat)]
+
+pre_bound <- gene_dat %>% select(SAMPID, passed_genes, tissue)
+
+all_bound <- c()
+for (cur_ind in seq_along(unique(pre_bound$tissue))) {
+    cur_tiss <- unique(pre_bound$tissue)[cur_ind]
+    temp_dat <- filter(pre_bound, tissue == cur_tiss) %>%
+        select(-tissue)
+    new_subj <- GTEx_SAMPID_to_SUBJID(temp_dat$SAMPID)
+    colnames(temp_dat) <- paste0(colnames(temp_dat), "_",cur_tiss)
+    temp_dat <- cbind(new_subj, temp_dat)
+    if (cur_ind == 1) {
+        all_bound <- temp_dat
+        next
+    } else{
+        all_bound <- left_join(all_bound, temp_dat)
+    }
+    
+}
+
+
+ggplot(all_bound, aes(PLA2G2A_lung, PLA2G2A_heart_atrial_appendage)) +
+    geom_point()
+
+
+ggplot(all_bound, aes(PLA2G2A_adipose_subcutaneous, PLA2G2A_liver)) +
+    geom_point()
+```
+
