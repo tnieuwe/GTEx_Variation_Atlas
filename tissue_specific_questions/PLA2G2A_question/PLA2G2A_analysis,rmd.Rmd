@@ -18,12 +18,16 @@ We think PLAG2A might be related to hardy scale and wish to explore it
 
 ## Load SUBJ data
 phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+dth_dat <- select(phen_dat, SUBJID, TRISCHD, DTHHRDY)%>%
+    mutate(DTHHRDY = factor(DTHHRDY,levels = c(1, 2, 3,4, 0),ordered = T))
 ## Load samp data.
 samp_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt", fill=T,
                       stringsAsFactors=FALSE, sep="\t", header=T)
 ## Load common subj_dat
 subj_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt", fill=T,
                       stringsAsFactors=FALSE, sep="\t", header=T)
+# dth_dat <- select(subj_dat, SUBJID, DTHHRDY,) %>%
+#     mutate(DTHHRDY = factor(DTHHRDY,levels = c(1, 2, 3,4, 0),ordered = T))
 ## Load keys 
 key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 
@@ -39,9 +43,45 @@ in those clusters
 ```{r}
 clusters_with_pla <- str_detect(man_cur$genes, "PLA2G2A")
 pla2g_clusters <- man_cur[clusters_with_pla,]
-pla2g_clusters %>% select(label, genes, ischemic_sig) %>%
+pla2g_clusters <- pla2g_clusters %>% select(label, genes, ischemic_sig) %>%
     mutate(n_genes = str_count(genes, ";") + 1)
 
+pla_key_dat <- filter(key_dat, label %in% pla2g_clusters$label,
+                      !str_detect(label, "X"))
+```
+ Pull in clusters associated with Pla2ga
+```{r}
+model_res <- NULL
+plot_list <- list()
+for (pla_clust_ind in seq(nrow(pla_key_dat))) {
+    cur_label <- (pla_key_dat$label)[pla_clust_ind]
+    cur_tiss <- (pla_key_dat$r_names)[pla_clust_ind]
+    cur_clust <- pla_key_dat$cluster[pla_clust_ind]
+    path_to_profile <- paste0("../../MARCC output/variance_profiles_kendall/",
+                              "kendall-",cur_tiss,"-cluster-profiles.csv")
+    ## equation
+    profile_dat <- read.csv(path_to_profile) %>% select(SAMPID = X,pla_clust = cur_clust) %>%
+        mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
+        left_join(dth_dat)
+    lm_res <- summary(lm(pla_clust ~ DTHHRDY + TRISCHD, data= profile_dat))
+    new_row <- cbind(cur_label, broom::tidy(lm_res)[2,])
+    model_res <- rbind(model_res, new_row)
+    ## Plot
+    plt <- ggplot(profile_dat, aes(DTHHRDY, pla_clust)) +
+        ggforce::geom_sina()+
+        labs(title=cur_label) + theme_classic()
+    plot_list[[cur_label]] <- plt
+}
+colnames(model_res)[1] <- "label"
+joined_dat <- left_join((model_res), pla2g_clusters) %>%
+    mutate(pval_adj = p.adjust(p.value, n = nrow(model_res),method = "fdr"))
 
+write.csv(joined_dat, "data_out/pla2g2a_DTHHRDY_results.csv", row.names = F)
+
+pdf("data_out/pla2g2a_DTHHRDY_plots.pdf", width = 10, height = 8)
+for (cur_plot in plot_list) {
+ print(cur_plot)   
+}
+dev.off()
 ```
 
