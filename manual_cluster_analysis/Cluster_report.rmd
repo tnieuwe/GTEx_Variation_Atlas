@@ -1,0 +1,120 @@
+---
+title: "Cluster Report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(viridis)
+library(viridisLite)
+key_dat <- read.csv("../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+# State of Clusters
+The purpose of this Rmarkdown is to see how many clusters we have solved or at 
+least have a hypothesis for.
+
+# Current overview
+```{r overview pre plot, echo=FALSE}
+## Remove X clusters and prepare data for text
+current_results <- read.csv("manual_curation.csv") %>%
+    filter(!str_detect(label, "X"))
+somewhat_solved <- sum(current_results$probable_cluster != "")
+total_clusters <- nrow(current_results)
+percent_solved <- round(somewhat_solved/total_clusters, 3) * 100
+
+all_possibilites <- sort(table(current_results$probable_cluster),decreasing = T)
+top_possibilites <- all_possibilites[all_possibilites >= 9]
+current_results <- left_join(current_results, key_dat, by  = "label")
+
+current_results <- mutate(current_results,
+                          idea_what_it_is = ifelse(probable_cluster != "", "Yes", "No"),
+                          approx_type = case_when(
+                              probable_cluster == "SEX" ~ "Sex",
+                              probable_cluster == "classic_contamination" ~ "Classic contam",
+                              probable_cluster == "Immuno" ~ "Immunoglobs",
+                              probable_cluster == "new_contamination" ~ "New contam",
+                              probable_cluster == "ischemic" ~ "marked ischemic",
+                              probable_cluster == "interleukins" ~ "marked interleukins",
+                              TRUE ~ "Other"
+                          ),
+                          n_genes = str_count(genes, ";") + 1)
+ggplot(current_results, aes(x = idea_what_it_is, fill = approx_type)) +
+    geom_bar() +
+    viridis::scale_fill_viridis(discrete = T) +
+    theme_classic() +
+    labs(title = "Overview of clusters we have hypotheses for",
+         x="Hypothesis or not")
+
+ggplot(current_results, aes(x = idea_what_it_is, fill = sex_sig)) +
+    geom_bar() +
+    viridis::scale_fill_viridis(discrete = T) +
+    theme_classic() +
+    labs(title = "Overview of clusters that correlate with sex",
+         x="Hypothesis or not")
+
+ggplot(current_results, aes(x = idea_what_it_is, fill = ischemic_sig)) +
+    geom_bar() +
+    viridis::scale_fill_viridis(discrete = T) +
+    theme_classic() +
+    labs(title = "Overview of clusters that correlate with ischemic time",
+         x="Hypothesis or not")
+
+ggplot(current_results, aes(x = n_genes, fill = idea_what_it_is)) +
+    geom_histogram(alpha = 0.5, position = "identity", bins = 50) +
+    theme_classic() +
+    labs(title = "Distribution of solved clusters vs unsolved",
+         x="N of genes in cluster")
+
+ggplot(filter(current_results, n_genes < 75), aes(x = n_genes, fill = idea_what_it_is)) +
+    geom_histogram(alpha = 0.5, position = "identity", bins = 40) +
+    theme_classic() +
+    labs(title = "Distribution of solved clusters vs unsolved; <70 genes",
+         x="N of genes in cluster")
+
+
+ggplot(current_results, aes(x = official_name, fill = idea_what_it_is)) +
+    geom_bar() +
+    viridis::scale_fill_viridis(discrete = T) +
+    theme_classic() +
+    coord_flip() +
+    labs(title = "Solved clusters per tissue type",
+         x="Tissue")
+
+
+```
+
+Currently we have `r total_clusters` clusters, with `r somewhat_solved` partially solved, meaning we have an idea on what they are. That means we currently have `r percent_solved`% clusters solved.
+
+
+## Timeline of clusters solved
+```{r pressure, echo=FALSE}
+date_filename = "data_out/cluster_solved_history.csv"
+
+if (!file.exists(date_filename)) {
+    new_frame <- data.frame(somewhat_solved,Sys.Date())
+    colnames(new_frame) <- c("solved_clusters", "date")
+    write.csv(new_frame, date_filename, row.names = FALSE)
+} else{
+    date_frame <- read.csv(date_filename)
+    date_frame$date <- as.Date(date_frame$date)
+}
+
+if (!(Sys.Date() %in% date_frame$date)) {
+    new_row <- data.frame(somewhat_solved,Sys.Date())
+    date_frame <- rbind(date_frame, new_row)
+    write.csv(date_frame, date_filename, row.names = FALSE)
+}
+
+ggplot(date_frame, aes(x = date, y = solved_clusters)) +
+    geom_line() +
+    geom_point() +
+    theme_classic() +
+    ylim(0, nrow(current_results)) +
+    labs(title = "N of clusters solved over time",
+         y="N of solved clusters")
+
+
+```
+
