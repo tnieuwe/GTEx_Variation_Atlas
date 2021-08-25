@@ -136,3 +136,81 @@ CommonGenes <- function(gene_of_int, cluster_list, x_clust = TRUE){
   final_table<- pre_final_table[order(pre_final_table$Freq,decreasing = T),]
   return(final_table)
 }
+
+RemoveSemicolon <- function(gene_list){
+  ### The purpose of this code is to make it easier to copy and paste
+  ### gene lists into tools such as HPAStainR and GO Ontology
+  cat(paste0(unlist(strsplit(gene_list,split =  ";")), "\n"))
+}
+
+
+GenesFromTissues <- function(tiss_of_int, genes_of_int, key_dat, vst_location){
+  ### The purpose of this function is to easily load in normalized RNA-seq
+  ### data to compare gene expression. The main idea is to see if the
+  ### expression correlates across samples.
+  ## load required packages
+  require(DESeq2)
+  require(tidyverse)
+  ## Filter tissue based on any of the columns, this allows us to use abbreviations
+  ## r names or names proper
+  cur_keys <- key_dat %>% select(abrreviated, r_names, official_name) %>%
+    unique() %>%
+    filter(case_when(
+      abrreviated %in% tiss_of_int |
+        r_names %in% tiss_of_int |
+        official_name %in% tiss_of_int ~ TRUE,
+      TRUE ~ FALSE
+    ))
+  cur_keys <- cur_keys[order(tiss_of_int, cur_keys$r_names),]
+  
+  ## Prepare returned data frame
+  final_gene_dat <- NULL
+  for (tiss_ind in seq_along(tiss_of_int)) {
+    ## Select and load tissues which exist
+    tissue <- cur_keys$r_names[tiss_ind]
+    abbrev <- cur_keys$abrreviated[tiss_ind]
+    tiss_path <- paste0(vst_location,tissue,"-vsd-mean-filtered.rda")
+    ## Catch missing vsts
+    if (!file.exists(tiss_path)) {
+      stop(paste0(tissue, " PATH does not exist"))
+    }
+    ## Load data and do a quick sanity check
+    load(tiss_path)
+    if(!all(gtabMeanFiltered$gene_id == rownames(assay(generalVSDMeanFiltered)))){
+      stop(paste0(tissue, " fails sanity check"))
+    }
+    ## Index on genes of interest
+    ind <- gtabMeanFiltered$gene_name %in% genes_of_int
+    final_gtab <- gtabMeanFiltered[ind,]
+    ## Take out gene data and name it
+    gene_dat <- t(assay(generalVSDMeanFiltered)[ind,,drop =FALSE])
+    colnames(gene_dat) <- final_gtab$gene_name
+    ## If more than one tissue bind the tissue name
+    if (length(tiss_of_int) > 1) {
+      gene_dat <- cbind(as.data.frame(gene_dat), tissue)
+      ## if first tissue just place it in final object
+      if (is.null(final_gene_dat)) {
+        final_gene_dat <- gene_dat
+        next
+      }
+      #Use bind rows from dplyr in case not all genes are shareed
+      final_gene_dat <- bind_rows(final_gene_dat, gene_dat) %>%
+        select(everything(), tissue)
+    } else{
+      colnames(gene_dat) <-final_gtab$gene_name
+      gene_dat <- rownames_to_column(as.data.frame(gene_dat), var = "SAMPID")
+      final_gene_dat <- gene_dat
+    }
+    
+  }
+  if (!("SAMPID" %in% colnames(final_gene_dat))) {
+    final_gene_dat <- final_gene_dat %>% rownames_to_column(var = "SAMPID")
+  }
+  ## 
+  final_gene_dat <- final_gene_dat  %>%
+    mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
+    select(SUBJID, SAMPID, everything())
+  
+  return(final_gene_dat)
+  
+}
