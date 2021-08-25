@@ -144,7 +144,8 @@ RemoveSemicolon <- function(gene_list){
 }
 
 
-GenesFromTissues <- function(tiss_of_int, genes_of_int, key_dat, vst_location){
+GenesFromTissues <- function(tiss_of_int, genes_of_int, key_dat, vst_location,
+                             run_all_available = FALSE){
   ### The purpose of this function is to easily load in normalized RNA-seq
   ### data to compare gene expression. The main idea is to see if the
   ### expression correlates across samples.
@@ -153,6 +154,16 @@ GenesFromTissues <- function(tiss_of_int, genes_of_int, key_dat, vst_location){
   require(tidyverse)
   ## Filter tissue based on any of the columns, this allows us to use abbreviations
   ## r names or names proper
+  if (run_all_available == TRUE){
+    tiss_of_int <- c()
+    for (tissue in unique(key_dat$r_names)) {
+      tiss_path <- paste0(vst_location,tissue,"-vsd-mean-filtered.rda")
+      if (file.exists(tiss_path)) {
+        tiss_of_int <- append(tiss_of_int, tissue)
+      }
+    }
+    
+  }
   cur_keys <- key_dat %>% select(abrreviated, r_names, official_name) %>%
     unique() %>%
     filter(case_when(
@@ -210,7 +221,31 @@ GenesFromTissues <- function(tiss_of_int, genes_of_int, key_dat, vst_location){
   final_gene_dat <- final_gene_dat  %>%
     mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
     select(SUBJID, SAMPID, everything())
+
+  
   
   return(final_gene_dat)
   
+}
+
+
+GenesFromTissWiden <- function(GenesFromTissues_output){
+  pre_bound <- GenesFromTissues_output
+  all_bound <- c()
+  for (cur_ind in seq_along(unique(pre_bound$tissue))) {
+    cur_tiss <- unique(pre_bound$tissue)[cur_ind]
+    temp_dat <- filter(pre_bound, tissue == cur_tiss) %>%
+      select(-tissue)
+    new_subj <- GTEx_SAMPID_to_SUBJID(temp_dat$SAMPID)
+    colnames(temp_dat) <- paste0(colnames(temp_dat), "_",cur_tiss)
+    temp_dat <- cbind(new_subj, temp_dat)
+    if (cur_ind == 1) {
+      all_bound <- temp_dat
+      next
+    } else{
+      all_bound <- left_join(all_bound, temp_dat)
+    }
+    
+  }
+  return(all_bound)
 }
