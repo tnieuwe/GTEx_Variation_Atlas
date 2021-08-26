@@ -103,6 +103,7 @@ if (!file.exists(date_filename)) {
 
 if (!(Sys.Date() %in% date_frame$date)) {
     new_row <- data.frame(somewhat_solved,Sys.Date())
+    colnames(new_row) <- colnames(date_frame)
     date_frame <- rbind(date_frame, new_row)
     write.csv(date_frame, date_filename, row.names = FALSE)
 }
