@@ -21,6 +21,10 @@ cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/
 current_markers <- read.csv("data_out/master_tabula_table_sans_blood_tabula.csv")
 ## tabula to gtex key
 tab_gtex_key <- read.csv("../../global_in/general_tissues_tabula_mkh.csv")
+## General key table
+general_key <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv") %>%
+  select(abrreviated, r_names) %>%
+  unique()
 ```
 
 First run on just lung data
@@ -146,8 +150,8 @@ filt_tab_key <- filter(tab_gtex_key, (tabula_sapiens %in%
 
 
 
-proportion_option = "cell_type"
-#proportion_option = "cluster"
+#proportion_option = "cell_type"
+proportion_option = "cluster"
 
 for (tissue_ind in seq(nrow(filt_tab_key))) {
   ## Prepare names and filter down the markers to the tissues of interests
@@ -262,10 +266,13 @@ for (tissue_ind in seq(nrow(filt_tab_key))) {
         n_of_genes_considered_marker,
         n_of_gene_in_cluster,
         n_of_repeat_genes,
-        select(initial_df, starts_with(compartments), everything())) 
+        select(initial_df, starts_with(compartments), everything()))
+  
+  tiss_abrv <- general_key$abrreviated[general_key$r_names == current_gtex_tissue]
+
   write.csv(final_df,
             paste0("data_out/tissue_comparisons/",
-                   current_gtex_tissue, "_tabula_sapiens_markers_",
+                   tiss_abrv, "_tabula_sapiens_markers_",
                    "prop_type_", proportion_option,".csv"),row.names = F)
 }
 ```
