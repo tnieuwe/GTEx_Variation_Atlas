@@ -55,8 +55,54 @@ ggplot(combined_dat, aes(x = per_gene_mean, fill = past_thresh)) +
 ```
 All current tissues
 ```{r}
+all_tiss <- unique(key_dat$r_names)
+all_dot_plot <- list()
+all_hist_plot <- list()
+for (tiss_ind in seq_along(all_tiss)) {
+    cur_tiss <- all_tiss[tiss_ind]
+    cur_path <- paste0("../../Setup Code/output/",cur_tiss,"-vsd-mean-filtered.rda")
+    if (!file.exists(cur_path)) {
+            next
+        }
+    load(cur_path)
+    gene_dat <- assay(generalVSDMeanFiltered)
+    per_gene_variance <- apply(gene_dat,1 , var)
+    per_gene_mean <- apply(gene_dat, 1, mean)
+    combined_dat <- data.frame(gtabMeanFiltered$gene_name, per_gene_mean, per_gene_variance)
+    
+    var_thresh <- quantile(per_gene_variance, .98)
+    
+    combined_dat <- combined_dat %>%
+        mutate(past_thresh = ifelse(per_gene_variance > var_thresh,
+                                                 TRUE,
+                                                 FALSE),
+               is_plag = ifelse(gtabMeanFiltered.gene_name == "PLA2G2A",
+                                TRUE, FALSE))
+    
+    dot_plt <- ggplot(combined_dat, aes(x = per_gene_mean, y = per_gene_variance)) +
+        geom_point(aes(color = past_thresh, shape = is_plag)) +
+        geom_smooth() +
+        labs(title = cur_tiss)
+    
+    combined_dat$past_thresh <- factor(combined_dat$past_thresh, c("TRUE", "FALSE"))
+    hist_plt <- ggplot(combined_dat, aes(x = per_gene_mean, fill = past_thresh)) +
+        geom_histogram() +
+        labs(title = cur_tiss)
+    all_dot_plot[[cur_tiss]] <- dot_plt
+    all_hist_plot[[cur_tiss]] <- hist_plt
+
+}
+pdf("data_out/all_var_v_mean_dot_plots.pdf")
+for (plot_ind in seq_along(all_dot_plot)) {
+    print(all_dot_plot[[plot_ind]])
+}
+dev.off()
 
 
-
+pdf("data_out/all_var_v_mean_hist_plots.pdf")
+for (plot_ind in seq_along(all_hist_plot)) {
+    print(all_hist_plot[[plot_ind]])
+}
+dev.off()
 ```
 
