@@ -118,7 +118,7 @@ ClusterGeneOverlaps <- function(genes_of_int,
   return(res_df)
 }
 
-CommonGenes <- function(gene_of_int, cluster_list, x_clust = TRUE){
+CommonGenes <- function(gene_of_int, cluster_list, n_return = NULL, x_clust = TRUE){
   ### The purpose of this function is to find out what genes frequently
   ### show up with another gene of interest. We also have the functionality
   ### to ignore X clusters as those aren't "real clusters". 
@@ -134,6 +134,10 @@ CommonGenes <- function(gene_of_int, cluster_list, x_clust = TRUE){
   pre_final_table <- as.data.frame(table(final_vect))
   pre_final_table <- pre_final_table[pre_final_table$Freq!=1,]
   final_table<- pre_final_table[order(pre_final_table$Freq,decreasing = T),]
+  final_table$final_vect <- as.character(final_table$final_vect)
+  if (!is.null(n_return)) {
+    final_table <- head(final_table, n_return)
+  }
   return(final_table)
 }
 
@@ -243,7 +247,7 @@ GenesFromTissWiden <- function(GenesFromTissues_output){
       all_bound <- temp_dat
       next
     } else{
-      all_bound <- left_join(all_bound, temp_dat)
+      all_bound <- left_join(all_bound, temp_dat, by = "new_subj")
     }
     
   }
