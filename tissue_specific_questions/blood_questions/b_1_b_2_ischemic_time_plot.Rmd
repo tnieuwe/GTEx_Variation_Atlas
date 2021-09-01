@@ -1,0 +1,46 @@
+---
+title: "Blood B.1 Plot"
+author: "Tim N"
+date: "8/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+libraries
+```{r}
+library(tidyverse)
+library(patchwork)
+source("../../global_in/general_scripts.R")
+```
+
+Data sources
+```{r}
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+blood_profile <- ZscoreProfilePuller("whole_blood","../../MARCC output/variance_profiles_kendall/")[[1]]
+```
+Combine data and make variable
+```{r}
+joined_dat <- left_join(blood_profile, samp_dat) %>%
+    mutate(blood_draw_time = ifelse(SMTSISCH > 0,
+                                    "pre-mortem",
+                                    "post-mortem"))
+```
+Make plots
+
+```{r}
+b2_plot <- ggplot(joined_dat, aes(blood_draw_time, B.2)) +
+    ggforce::geom_sina() +
+    theme_classic()
+
+b1_plot <- ggplot(joined_dat, aes(blood_draw_time, B.1)) +
+    ggforce::geom_sina() +
+    theme_classic()
+
+plots <- b1_plot + b2_plot + patchwork::plot_annotation("B Cluster Compared to Pre or Post Mortem Blood Draws")
+
+plots
+```
+
