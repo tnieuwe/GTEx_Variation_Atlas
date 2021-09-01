@@ -13,16 +13,14 @@ source("../../global_in/general_scripts.R")
 
 
 ```{r}
-key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
-```
-
-
-```{r}
 
 list_dat <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",
                                  x_clust = FALSE)
-
 ```
+
+
+This was the previous analysis I'm going to do a newer one below more relevant
+to the current  question and includes both B.1 and B.2
 
 Genes of interest
 ```{r}
@@ -88,5 +86,143 @@ for (cluster in rownames(head(top_clusters_filt,5))) {
     clusters_out[[paste(tissue, cluster, sep = ".")]] <- cur_genes
 }
 clusters_out
+```
+
+New Analysis begins here:
+
+We want to find for both B.1 and B.2 what the top overlapping genes are with
+other tissues to see if blood specific ischemia is related to other clusters.
+
+
+```{r}
+## Pull out genes as list to use lapply for analyses
+b_clust_genes <- list_dat$whole_blood[c("B.1", "B.2")]
+
+ClusterGeneOverlaps(b_clust_genes$B.1, list_dat)
+b_clust_overlaps <- lapply(b_clust_genes, function(x){
+    ClusterGeneOverlaps(x, list_dat) %>%
+        arrange(desc(n_intersect))
+})
+
+most_frequently_found_genes <- lapply(b_clust_overlaps, function(x){
+    sort(table(unlist(str_split(x$found_genes,pattern =  "; "))),decreasing = T)
+})
+```
+
+The above findings create two situations which I would like to examine further
+for each cluster. For B.1 I want to know if cluster containing CD163 are often
+times correlating subclusters with hemoglobin genes. For B.2 I want to see if 
+higher levels of these genes are global throughout the body.
+
+
+Do CD163 clusters frequently correlate with HBA clusters?
+```{r}
+gene_1 <- "CD163"
+gene_2 <- "HBA1"
+cluster_list <- list_dat
+profile_loc_or_frame <- "../../MARCC output/variance_profiles_kendall/"
+
+DoGeneSubclustersCorrelate <- function(gene_1,
+                                       gene_2,
+                                       cluster_list,
+                                       profile_loc_or_frame){
+    
+    ### Output will be a table with the following columns
+    ### Tissue of interest
+    ### The pearson correlation between clusters with both genes (NA if not both)
+    ### Gene_1 what cluster is it in
+    ### gene_2 what cluster is it in
+    
+    ## Find tissues where genes are found in separate clusters or only in one tissue
+    table_return <- NULL
+    tiss_vect_for_profile <- c()
+    for (tiss_ind  in seq_along(cluster_list)) {
+        cur_tiss <- cluster_list[[tiss_ind]]
+        tiss_name <- names(cluster_list)[tiss_ind]
+        gene_vect <- c(gene_1,gene_2)
+        overlap_ind <- gene_vect %in% unlist(cur_tiss)
+        overlap_val <- sum(overlap_ind)
+        ## If there are no overlapping genes skip
+        if (overlap_val == 0) {
+            next
+        } else if (overlap_val == 1){
+            ## If there is one overlapping gene record the cluster it is in
+            ## but have the correlation be an NA
+            found_gene <- gene_vect[overlap_ind]
+            bool_ind <-lapply(cur_tiss, function(x){
+                found_gene %in% x
+            })
+            bool_ind <- unlist(bool_ind)
+            cluster_found <- names(cur_tiss)[bool_ind]
+            overlap_pre_bind <- overlap_ind
+            overlap_pre_bind[overlap_ind == TRUE] <- cluster_found
+            new_row <- cbind(tiss_name, NA, overlap_pre_bind[1], overlap_pre_bind[2])
+            table_return <- rbind(table_return, new_row)
+        } else {
+            ## Check if they're in the same cluster
+            bool_ind <-lapply(cur_tiss, function(x){
+                sum(gene_vect %in% x) > 1
+            })
+            ## If they are in the same cluster add to the table
+            if (TRUE %in% unlist(bool_ind)) {
+                genes_clust <- names(cur_tiss)[unlist(bool_ind)]
+                new_row <- cbind(tiss_name, 1, genes_clust, genes_clust)
+                table_return <- rbind(table_return, new_row)
+            } else {
+                tiss_vect_for_profile <- append(tiss_vect_for_profile, tiss_name)
+            }
+            
+        }
+    }
+    ## Now pull profiles and filter them for relevant clusters
+    if (is.character(profile_loc_or_frame)) {
+        profile_loc_or_frame <- ZscoreProfilePuller(tiss_vect_for_profile,
+                                                    profile_loc_or_frame)
+    } else{
+        profile_loc_or_frame_ind <- names(profile_loc_or_frame) %in% tiss_vect_for_profile
+        profile_loc_or_frame <- profile_loc_or_frame[profile_loc_or_frame_ind]
+    }
+    ## Loop over profiles and correlate them
+    for (cur_ind in seq_along(profile_loc_or_frame)) {
+        cur_prof <- profile_loc_or_frame[[cur_ind]]
+        cur_tiss <- names(profile_loc_or_frame)[cur_ind]
+        gene_finder <- lapply(cluster_list[[cur_tiss]], function(x){
+            sum(gene_vect %in% x)
+        })
+        clusters_to_corr <- names(gene_finder)[unlist(gene_finder) == 1]
+        cor_result <- cor.test(cur_prof[[clusters_to_corr[1]]],
+                               cur_prof[[clusters_to_corr[2]]],
+                 method = "pearson")
+        ## Make sure the tissues are in the right order
+        gene_finder_2 <- lapply(cluster_list[[cur_tiss]], function(x){
+            gene_vect[gene_vect %in% x]
+        })
+        gene_finder_2 <- unlist(gene_finder_2)[length( unlist(gene_finder_2)) > 0]
+        overlap_pre_bind <- names(gene_finder_2)[match(gene_vect,gene_finder_2)]
+        new_row <- cbind(cur_tiss, round(cor_result$estimate,2),
+                         overlap_pre_bind[1], overlap_pre_bind[2])
+        table_return <- rbind(table_return, new_row)
+    }
+    table_return <- as_tibble(table_return)
+    colnames(table_return) <- c("tissue", "correlation", gene_vect)
+    table_return$correlation <- as.numeric(table_return$correlation)
+    table_return <- arrange(table_return, desc(abs(correlation)))
+    return(table_return)
+                                       }
+
+b1_carryover_test <- DoGeneSubclustersCorrelate("CD163", "HBA1", list_dat, "../../MARCC output/variance_profiles_kendall/")
+```
+
+So blood invasion (as measured by HBA1) does not positively correlate with CD163.
+
+
+Now we will look at the top genes across tissues from cluster B.2
+```{r}
+b2_genes <- names(most_frequently_found_genes$B.2)[most_frequently_found_genes$B.2 > 10]
+
+across_tissue_out <- GenesFromTissues(genes_of_int = b2_genes, key_dat = key_dat,
+                 vst_location = "../../Setup Code/output/",
+                 run_all_available = T)
+NewZ
 ```
 
