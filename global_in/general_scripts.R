@@ -45,7 +45,7 @@ GeneClusterPuller <- function(r_name_vect, location){
     return(tiss_list)
 }
 
-AllGeneClusterPuller <- function(location){
+AllGeneClusterPuller <- function(location, x_clust = TRUE){
   ### This function is used to pull the genes of ALL tissue clusters
   r_name_vect <- c("adipose_subcutaneous", "adipose_visceral__omentum", "adrenal_gland", 
                    "artery_aorta", "artery_coronary", "artery_tibial", "brain_amygdala", 
@@ -69,6 +69,12 @@ AllGeneClusterPuller <- function(location){
                                  "kendall-",
                                  tiss,
                                  "-gene-clusters-high-variance.csv"))
+    ## Add X cluster removal option
+    if (x_clust == FALSE) {
+      x_ind <-colnames(cur_frame) %in% "X" 
+      cur_frame <- cur_frame[,!x_ind]
+    }
+    
     clust_list <- list()
     for (cur_col in seq(ncol(cur_frame))) {
       gene_column <- cur_frame[,cur_col]
