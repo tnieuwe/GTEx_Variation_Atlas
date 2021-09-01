@@ -27,9 +27,16 @@ source("../../global_in/general_scripts.R")
 master_key_table <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 
 ## get sample data and subject data
-subj_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+subj_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
+    mutate(DTHHRDY_linear = ifelse(DTHHRDY == 0, 5, DTHHRDY),
+           DTHHRDY = factor(DTHHRDY, c(1,2,3,4,0))
+           )
 samp_dat <- read.table(file = "../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt",
                        sep = "\t", fill = TRUE, header = TRUE)
+
+sex_genes <- c("XIST", "DDX3Y", "UTY", "PRKY",
+               "KDM5D", "RP11−424G14.1","USP9Y", "TXLNGY", "TTTY15")
+grep_sex = paste0(sex_genes, collapse = "|")
 ```
 
 ```{r}
@@ -63,12 +70,12 @@ for (tiss_ind in seq_along(all_tissues)) {
 
 ```
 
-Go through each tissue and do analysis
+Go through each tissue and run the linear model
 ```{r}
 
 batch_sample_dat <- samp_dat %>% select(SAMPID, SMTSISCH) %>%
     mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
-batch_subj_dat <- subj_dat %>% select(SUBJID, AGE, SEX)
+batch_subj_dat <- subj_dat %>% select(SUBJID, AGE, SEX, DTHHRDY,DTHHRDY_linear)
 all_batch_dat <- left_join(batch_sample_dat, batch_subj_dat)
 
 ## For each tissue
@@ -78,6 +85,7 @@ cor_table <- NULL
 age_batch <- NULL
 sex_batch <- NULL
 ischemic_batch <- NULL
+dthhrdy_batch <- NULL
 
 for (tiss_ind in seq_along(tissue_dat_list)) {
     ## Get tissue
@@ -97,8 +105,14 @@ for (tiss_ind in seq_along(tissue_dat_list)) {
         cur_col <- z_score_cols[cur_col_ind]
         cluster <- cur_col
         gene_list <- tissue_dat_list[[tissue]][["gene_dat"]][,cluster]
+        ## Adding this because it does not make sense to test clusters
+        ## already known to correlate with sex due to sex chromosomes.
+        if (sum(grepl(grep_sex, gene_list)) >= 1) {
+            next
+        }
         gene_list <- paste(gene_list[gene_list != ""],collapse  = "; ")
-        lm_out <- lm(as.formula(paste0(cur_col, " ~ ", "AGE + SEX + SMTSISCH")),
+        lm_out <- lm(as.formula(paste0(cur_col, " ~ ",
+                                       "AGE + SEX + SMTSISCH + DTHHRDY_linear")),
                      data = joined_dat)
         summ_out <- broom::tidy(lm_out)
         age_temp <- filter(summ_out, term == "AGE") %>%
@@ -107,21 +121,24 @@ for (tiss_ind in seq_along(tissue_dat_list)) {
             cbind(cluster, tissue, .,gene_list)
         ischemic_temp <- filter(summ_out, term == "SMTSISCH") %>%
             cbind(cluster, tissue, .,gene_list)
+        DTHHRDY_temp <- filter(summ_out, term == "DTHHRDY_linear") %>%
+            cbind(cluster, tissue, .,gene_list)
         age_batch <- rbind(age_batch, age_temp)
         sex_batch <- rbind(sex_batch, sex_temp)
         ischemic_batch <- rbind(ischemic_batch, ischemic_temp)
+        dthhrdy_batch <- rbind(dthhrdy_batch,DTHHRDY_temp)
 
     }
 }
 
-batches_out  <- lapply(list(age_batch,sex_batch, ischemic_batch), function(x){
+batches_out  <- lapply(list(age_batch,sex_batch, ischemic_batch,dthhrdy_batch), function(x){
     x$p_adj <- p.adjust(x$p.value,method = "fdr")
     x <- select(x, everything(), gene_list)
     x <- arrange(x, p_adj)
     return(x)
 })
 
-batches <- c("age", "sex", "ischemic")
+batches <- c("age", "sex", "ischemic", "dthhrdy")
 for (table_ind in seq_along(batches_out)) {
     cur_batch <- batches[table_ind]
     cur_table <- batches_out[[table_ind]]
