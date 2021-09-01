@@ -223,6 +223,28 @@ b2_genes <- names(most_frequently_found_genes$B.2)[most_frequently_found_genes$B
 across_tissue_out <- GenesFromTissues(genes_of_int = b2_genes, key_dat = key_dat,
                  vst_location = "../../Setup Code/output/",
                  run_all_available = T)
-NewZ
+## Make inter tissue z-scores
+NewZScoreMaker <- function(gene_from_tissue_long_out){
+    numeric_ind <- sapply(gene_from_tissue_long_out, is.numeric)
+    zscores = rep(NA, nrow(gene_from_tissue_long_out))
+    for (cur_tiss in unique(gene_from_tissue_long_out$tissue)) {
+        tiss_ind <- gene_from_tissue_long_out$tissue %in% cur_tiss
+        numeric_matrix <- gene_from_tissue_long_out[tiss_ind,numeric_ind]
+        centered_matrix <- sweep(numeric_matrix, colMeans(numeric_matrix), MARGIN = 2)
+        zscore_matrix <- sweep(centered_matrix,
+                               apply(numeric_matrix, 2, sd),
+                               FUN = "/",
+                               MARGIN = 2)
+        zscores[tiss_ind] <- apply(zscore_matrix, 1, sum)/ncol(zscore_matrix)
+    }
+    return(zscores)    
+    
+}
+
+across_tissue_out$zscores <- NewZScoreMaker(across_tissue_out)
+
+
+
+
 ```
 
