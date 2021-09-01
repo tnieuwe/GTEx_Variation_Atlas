@@ -19,7 +19,9 @@ key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 
 ```{r}
 
-list_dat <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+list_dat <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",
+                                 x_clust = FALSE)
+
 ```
 
 Genes of interest
