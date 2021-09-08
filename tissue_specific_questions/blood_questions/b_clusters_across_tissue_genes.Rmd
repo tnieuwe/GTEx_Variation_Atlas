@@ -13,7 +13,7 @@ source("../../global_in/general_scripts.R")
 
 
 ```{r}
-
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 list_dat <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",
                                  x_clust = FALSE)
 ```
@@ -107,6 +107,8 @@ b_clust_overlaps <- lapply(b_clust_genes, function(x){
 most_frequently_found_genes <- lapply(b_clust_overlaps, function(x){
     sort(table(unlist(str_split(x$found_genes,pattern =  "; "))),decreasing = T)
 })
+
+most_frequently_found_genes$B.2
 ```
 
 The above findings create two situations which I would like to examine further
@@ -235,7 +237,7 @@ NewZScoreMaker <- function(gene_from_tissue_long_out){
                                apply(numeric_matrix, 2, sd),
                                FUN = "/",
                                MARGIN = 2)
-        zscores[tiss_ind] <- apply(zscore_matrix, 1, sum)/ncol(zscore_matrix)
+        zscores[tiss_ind] <- apply(zscore_matrix, 1, sum, na.rm =T)/ncol(zscore_matrix)
     }
     return(zscores)    
     
@@ -247,4 +249,218 @@ across_tissue_out$zscores <- NewZScoreMaker(across_tissue_out)
 
 
 ```
+
+Quick correlation peek
+
+```{r}
+temp_comp <- across_tissue_out %>% filter(tissue == sample(unique(across_tissue_out$tissue),size = 2))
+
+GenesFromTissWiden(temp_comp) %>%
+    ggplot(., aes_string(x = paste0("zscores_", unique(temp_comp$tissue)[1]),
+                         y = paste0("zscores_", unique(temp_comp$tissue)[2]))) +
+    geom_point()
+```
+Take top and bottom whole blood individuals
+```{r}
+n_of_samps <- 10
+ordered_blood <- across_tissue_out %>%
+    filter(tissue == "whole_blood") %>%
+    arrange(desc(zscores))
+top_subj <- head(ordered_blood$SUBJID, n_of_samps)
+bot_subj <- tail(ordered_blood$SUBJID, n_of_samps)
+
+blood_plot <- filter(across_tissue_out, case_when(
+    SUBJID %in% top_subj | SUBJID %in% bot_subj ~ TRUE,
+    TRUE ~ FALSE
+)) %>% mutate(
+    top_o_bot = case_when(
+        SUBJID %in% top_subj ~ "top",
+        SUBJID %in% bot_subj ~ "bot"
+    )
+)
+
+summ_blood_plot <- blood_plot %>%
+    group_by(tissue, top_o_bot) %>%
+    summarize(zscores = mean(zscores), top_o_bot) %>%
+    unique() 
+
+overall_comparison <- summ_blood_plot %>%
+    pivot_wider(id_cols = tissue, names_from = top_o_bot, values_from = zscores) %>%
+    mutate(top_over_bot = top > bot,
+           mean_diff = (top-bot)) %>%
+    filter(!is.na(mean_diff)) %>%
+    arrange(desc(mean_diff))
+
+
+## Plot changes
+## Remove where there are no top and bots
+## order on mean difference
+blood_plot <- blood_plot %>%
+    filter(tissue %in% overall_comparison$tissue) %>%
+    mutate(tissue = factor(tissue, levels = overall_comparison$tissue))
+summ_blood_plot <- summ_blood_plot %>%
+    filter(tissue %in% overall_comparison$tissue) %>%
+    mutate(tissue = factor(tissue, levels = overall_comparison$tissue))
+
+ggplot(blood_plot, aes(tissue, zscores, color = top_o_bot))  +
+    geom_point(aes(group = SUBJID), alpha = .5) +
+    geom_line(aes(group = SUBJID), alpha = .5) +
+    theme_classic() + 
+    theme(axis.text.x = element_text(angle = 80, hjust=1)) +
+    geom_boxplot(data = summ_blood_plot, aes(tissue, zscores))
+
+print("whole blood b.2 cluster comparison across tissues")
+table(overall_comparison$top_over_bot)
+```
+How often do these genes show up with HBA1?
+```{r}
+hba1_overlap <- ClusterGeneOverlaps(c("HBA1", b2_genes),all_clusters = list_dat,only_hits = T) %>%
+    mutate(hba_plus = ifelse(str_detect(found_genes, "HBA1") &
+                                 str_detect(found_genes, ";"), TRUE,
+                             FALSE))
+table(hba1_overlap$hba_plus)
+```
+Do the genes correlate with HBA1 via subclusters?
+```{r}
+
+results_out <- lapply(b2_genes, DoGeneSubclustersCorrelate, gene_2 = "HBA1", cluster_list = list_dat, profile_loc_or_frame= "../../MARCC output/variance_profiles_kendall/")
+
+analysis_out <- lapply(results_out, function(x){
+    n_of_na <- sum(is.na(x$correlation))
+    n_pos_cor <- sum(x$correlation > 0,na.rm = T)
+    n_neg_cor <- sum(x$correlation < 0,na.rm = T)
+    n_same_clust <- sum(x$correlation == 1,na.rm = T)
+    n_total_tissue <- nrow(x)
+    res <- cbind(n_same_clust, n_pos_cor, n_neg_cor, n_of_na, n_total_tissue)
+    rownames(res) <- colnames(x)[3]
+    return(res)
+}) 
+
+final_frame <- NULL
+for (cur_ind in seq_along(analysis_out)) {
+    final_frame <- rbind(final_frame, analysis_out[[cur_ind]])
+}
+final_frame <- final_frame %>%
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_name") %>%
+    mutate(normal_cor = ifelse(n_pos_cor > n_neg_cor, "positive", "negative"))
+
+final_frame_blood <- final_frame
+
+table(final_frame_blood$normal_cor)
+sum(final_frame_blood$n_same_clust)
+```
+
+So it appears, overall that genes in B.2 correlate, at least somewhat, wih HBA1. However we know HBA1 correaltes with ischemic time, so how do we know if this is causal or just a correlation? Our next goal is to look at other inflammation related clusters in other tissues and see how often they correlate with HBA1 and across the body. We'll be using the Skin sun exposed cluster C.1 and are going to remove genes that are shared.
+
+
+Get skin data ready
+```{r}
+skin_inflammation_genes <- list_dat$skin_sun_exposed__lower_leg$C.1[!(list_dat$skin_sun_exposed__lower_leg$C.1 %in% b2_genes)]
+
+
+skin_overlaps <- ClusterGeneOverlaps(skin_inflammation_genes, list_dat) %>%
+        arrange(desc(n_intersect))
+
+skin_gene_counts <- sort(table(unlist(str_split(skin_overlaps$found_genes,pattern =  "; "))),decreasing = T)
+
+skin_top_genes <- names(skin_gene_counts)[skin_gene_counts > 10]
+
+across_tissue_skin <- GenesFromTissues(genes_of_int = skin_top_genes,
+                                      key_dat = key_dat,
+                 vst_location = "../../Setup Code/output/",
+                 run_all_available = T)
+
+across_tissue_skin$zscores <- NewZScoreMaker(across_tissue_skin)
+
+skin_gene_counts
+```
+
+
+Plot skin data
+```{r}
+ordered_skin <- across_tissue_skin %>%
+    filter(tissue == "skin_sun_exposed__lower_leg") %>%
+    arrange(desc(zscores))
+top_subj <- head(ordered_skin$SUBJID, n_of_samps)
+bot_subj <- tail(ordered_skin$SUBJID, n_of_samps)
+
+skin_plot <- filter(across_tissue_skin, case_when(
+    SUBJID %in% top_subj | SUBJID %in% bot_subj ~ TRUE,
+    TRUE ~ FALSE
+)) %>% mutate(
+    top_o_bot = case_when(
+        SUBJID %in% top_subj ~ "top",
+        SUBJID %in% bot_subj ~ "bot"
+    )
+) 
+
+
+summ_skin_plot <- skin_plot %>%
+    group_by(tissue, top_o_bot) %>%
+    summarize(zscores = mean(zscores), top_o_bot) %>%
+    unique() 
+
+overall_comparison <- summ_skin_plot %>%
+    pivot_wider(id_cols = tissue, names_from = top_o_bot, values_from = zscores) %>%
+    mutate(top_over_bot = top > bot,
+           mean_diff = (top-bot)) %>%
+    filter(!is.na(mean_diff)) %>%
+    arrange(desc(mean_diff))
+
+
+## Plot changes
+## Remove where there are no top and bots
+## order on mean difference
+skin_plot <- skin_plot %>%
+    filter(tissue %in% overall_comparison$tissue) %>%
+    mutate(tissue = factor(tissue, levels = overall_comparison$tissue))
+summ_skin_plot <- summ_skin_plot %>%
+    filter(tissue %in% overall_comparison$tissue) %>%
+    mutate(tissue = factor(tissue, levels = overall_comparison$tissue))
+
+ggplot(skin_plot, aes(tissue, zscores, color = top_o_bot))  +
+    geom_point(aes(group = SUBJID), alpha = .5) +
+    geom_line(aes(group = SUBJID), alpha = .5) +
+    theme_classic() + 
+    theme(axis.text.x = element_text(angle = 80, hjust=1)) +
+    geom_boxplot(data = summ_skin_plot, aes(tissue, zscores))
+print("skin inflammation comparison across tissues")
+table(overall_comparison$top_over_bot)
+```
+
+Do the skin genes correlate with HBA1 via subclusters?
+```{r}
+
+results_out <- lapply(skin_top_genes, DoGeneSubclustersCorrelate, gene_2 = "HBA1", cluster_list = list_dat, profile_loc_or_frame= "../../MARCC output/variance_profiles_kendall/")
+
+analysis_out <- lapply(results_out, function(x){
+    n_of_na <- sum(is.na(x$correlation))
+    n_pos_cor <- sum(x$correlation > 0,na.rm = T)
+    n_neg_cor <- sum(x$correlation < 0,na.rm = T)
+    n_same_clust <- sum(x$correlation == 1,na.rm = T)
+    n_total_tissue <- nrow(x)
+    res <- cbind(n_same_clust, n_pos_cor, n_neg_cor, n_of_na, n_total_tissue)
+    rownames(res) <- colnames(x)[3]
+    return(res)
+}) 
+
+final_frame <- NULL
+for (cur_ind in seq_along(analysis_out)) {
+    final_frame <- rbind(final_frame, analysis_out[[cur_ind]])
+}
+final_frame <- final_frame %>%
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_name") %>%
+    mutate(normal_cor = ifelse(n_pos_cor > n_neg_cor, "positive", "negative"))
+
+final_frame_skin <- final_frame
+
+table(final_frame_skin$normal_cor)
+sum(final_frame_skin$n_same_clust)
+```
+
+It appears that the other ischemic related skin cluster (including PLAG2AB) does
+not share the same trend with blood perfused tissues. The next goal will be testing
+if HBA1 levels as a covariate might help explain the ischemia in the z-score clusters.
 
