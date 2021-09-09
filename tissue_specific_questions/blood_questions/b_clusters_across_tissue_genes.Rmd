@@ -263,6 +263,7 @@ GenesFromTissWiden(temp_comp) %>%
 Take top and bottom whole blood individuals
 ```{r}
 n_of_samps <- 10
+across_tissue_blood <- across_tissue_out
 ordered_blood <- across_tissue_out %>%
     filter(tissue == "whole_blood") %>%
     arrange(desc(zscores))
@@ -463,4 +464,163 @@ sum(final_frame_skin$n_same_clust)
 It appears that the other ischemic related skin cluster (including PLAG2AB) does
 not share the same trend with blood perfused tissues. The next goal will be testing
 if HBA1 levels as a covariate might help explain the ischemia in the z-score clusters.
+
+
+```{r}
+## Get all HBA1 data
+all_hba1 <- GenesFromTissues(genes_of_int = "HBA1", key_dat = key_dat,
+                 vst_location = "../../Setup Code/output/",
+                 run_all_available = T)
+## Pull phen data
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+cur_phen <- phen_dat %>% select(SUBJID, DTHHRDY, TRISCHD) %>%
+    ## change hardy scale
+    mutate(DTHHRDY_linear = ifelse(DTHHRDY == 0, 5, DTHHRDY),
+           DTHHRDY_factor = factor(DTHHRDY_linear))
+
+### Prepare all data for binding
+pre_bind_skin <- across_tissue_skin %>%
+    select(SUBJID, SAMPID, tissue, skin_zscore = zscores)
+pre_bind_blood <- across_tissue_blood %>%
+    select(SUBJID, SAMPID, tissue, blood_zscore = zscores)
+
+## Bind skin & blood Zscores with HBA1 and subject subject data
+bound_skin <- pre_bind_skin %>% left_join(cur_phen) %>%
+    left_join(all_hba1)
+
+bound_blood <- pre_bind_blood %>% left_join(cur_phen) %>%
+    left_join(all_hba1)
+
+
+## Initial test on subcut fat
+
+fat_skin <- bound_skin %>% filter(tissue == "adipose_subcutaneous")
+fat_blood <- bound_blood %>% filter(tissue == "adipose_subcutaneous")
+
+model_skin_hba <- summary(lm(skin_zscore ~ HBA1, data = fat_skin))
+model_skin_hba_isch <- summary(lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin))
+model_skin_hba_isch_hardy <- summary(lm(skin_zscore ~ HBA1 + TRISCHD + DTHHRDY_linear, data = fat_skin))
+
+model_skin_hba
+model_skin_hba_isch
+model_skin_hba_isch_hardy
+
+model_blood_hba <- summary(lm(blood_zscore ~ HBA1, data = fat_blood))
+model_blood_hba_isch <- summary(lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood))
+model_blood_hba_isch_hardy <- summary(lm(blood_zscore ~ HBA1 + TRISCHD + DTHHRDY_linear, data = fat_blood))
+model_blood_hba
+model_blood_hba_isch
+model_blood_hba_isch_hardy
+```
+
+Linear mixed model with random effect being tissue?
+```{r}
+require(lme4)
+require(lmerTest)
+mixed_skin <- lmer(formula = skin_zscore ~ HBA1 + TRISCHD + DTHHRDY_linear + (1|tissue),
+     data = bound_skin)
+summary(mixed_skin)
+
+mixed_skin_m1 <- lmer(formula = skin_zscore ~ TRISCHD + (1|tissue),
+     data = bound_skin)
+summary(mixed_skin_m1)
+
+
+mixed_skin_m1_hardy <- lmer(formula = skin_zscore ~ TRISCHD * DTHHRDY_factor + (1|tissue),
+     data = bound_skin)
+summary(mixed_skin_m1_hardy)
+
+mixed_skin_m2 <- lmer(formula = skin_zscore ~ HBA1 + TRISCHD + (1|tissue),
+     data = bound_skin)
+summary(mixed_skin_m2)
+
+
+mixed_blood <- lmer(formula = blood_zscore ~ HBA1 + TRISCHD + DTHHRDY_linear + (1|tissue),
+     data = bound_blood)
+summary(mixed_blood)
+
+mixed_blood_m3 <- lmer(formula = blood_zscore ~ TRISCHD  + (1|tissue),
+     data = bound_blood)
+summary(mixed_blood_m3)
+
+mixed_blood_m4 <- lmer(formula = blood_zscore ~ HBA1 + TRISCHD  + (1|tissue),
+     data = bound_blood)
+summary(mixed_blood_m4)
+
+```
+
+```{r}
+skin_blood_bound <- left_join(bound_skin, bound_blood)
+
+cor.test(skin_blood_bound$blood_zscore, skin_blood_bound$skin_zscore)
+```
+
+
+
+```{r}
+print("M1 Analysis")
+
+summary(mixed_blood_m3)$coefficients
+AIC(mixed_blood_m3)
+print("M2 Analysis")
+AIC(mixed_blood_m4)
+summary(mixed_blood_m4)$coefficients
+
+
+print("M3 Analysis")
+summary(mixed_skin_m1)$coefficients
+AIC(mixed_skin_m1)
+print("M4 Analysis")
+AIC(mixed_skin_m2)
+summary(mixed_skin_m2)$coefficients
+
+```
+
+Request Matt analysis
+```{r}
+
+model_blood_hba <- summary(lm(blood_zscore ~ HBA1, data = fat_blood))
+model_blood_hba_isch <- summary(lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood))
+model_blood_hba_isch_hardy <- summary(lm(blood_zscore ~ HBA1 + TRISCHD + DTHHRDY_linear, data = fat_blood))
+model_blood_hba
+model_blood_hba_isch
+model_blood_hba_isch_hardy
+
+
+model_skin_m3 <- summary(lm(skin_zscore ~ TRISCHD, data = fat_skin))
+model_skin_m3_plus <- summary(lm(skin_zscore ~ TRISCHD * DTHHRDY_factor, data = fat_skin))
+model_skin_m4 <- summary(lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin))
+
+```
+
+
+
+
+
+To test if this is real or not we are going to randomly sample genes from the x clusters
+to see if the same things happens in those results.
+```{r}
+x_list_dat <-  AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",
+                                 x_clust = T) %>% unlist()
+x_genes_ind <- str_detect(names(x_list_dat),pattern = "X") 
+x_genes_only <- x_list_dat[x_genes_ind]
+## Remove genes found in other clusters
+remove_dupe_ind <- x_genes_only %in% c(b2_genes, skin_top_genes, "HBA1", "HBA2", "HBB", "HBD")
+x_genes_unique <- x_genes_only[!remove_dupe_ind]
+
+head(sort(table(x_genes_unique),decreasing = TRUE) )
+
+freq_x_genes <- names(table(x_genes_unique)[table(x_genes_unique) >10])
+
+
+freq_x_df <- GenesFromTissues(genes_of_int = freq_x_genes, key_dat = key_dat,
+                 vst_location = "../../Setup Code/output/",
+                 run_all_available = T)
+
+```
+
+Do analysis on all data
+```{r}
+
+```
 
