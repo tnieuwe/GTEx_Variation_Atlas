@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(patchwork)
 source("../../global_in/general_scripts.R")
 ```
 
@@ -579,20 +580,191 @@ summary(mixed_skin_m2)$coefficients
 Request Matt analysis
 ```{r}
 
-model_blood_hba <- summary(lm(blood_zscore ~ HBA1, data = fat_blood))
-model_blood_hba_isch <- summary(lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood))
-model_blood_hba_isch_hardy <- summary(lm(blood_zscore ~ HBA1 + TRISCHD + DTHHRDY_linear, data = fat_blood))
-model_blood_hba
-model_blood_hba_isch
-model_blood_hba_isch_hardy
+model_blood_m1 <- (lm(blood_zscore ~ TRISCHD, data = fat_blood))
+model_blood_m1_plus <- (lm(blood_zscore ~ TRISCHD * DTHHRDY_factor, data = fat_blood))
+model_blood_m2 <- (lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood))
 
 
-model_skin_m3 <- summary(lm(skin_zscore ~ TRISCHD, data = fat_skin))
-model_skin_m3_plus <- summary(lm(skin_zscore ~ TRISCHD * DTHHRDY_factor, data = fat_skin))
-model_skin_m4 <- summary(lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin))
+
+model_skin_m3 <- (lm(skin_zscore ~ TRISCHD, data = fat_skin))
+model_skin_m3_plus <- (lm(skin_zscore ~ TRISCHD * DTHHRDY_factor, data = fat_skin))
+model_skin_m4 <- (lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin))
+
+
+## Print out matt requested
+paste("Model M1", unique(fat_blood$tissue))
+summary(model_blood_m1)$coefficients
+paste("Model M1 Interaction", unique(fat_blood$tissue))
+summary(model_blood_m1_plus)$coefficients
+paste("Model M2", unique(fat_blood$tissue))
+summary(model_blood_m2)$coefficients
+paste("Model M3", unique(fat_blood$tissue))
+summary(model_skin_m3)$coefficients
+paste("Model M3 Interaction", unique(fat_blood$tissue))
+summary(model_skin_m3_plus)$coefficients
+paste("Model M4", unique(fat_blood$tissue))
+summary(model_skin_m4)$coefficients
 
 ```
 
+```{r}
+#### VIFs
+require(regclass)
+
+
+paste("Model M1 Interaction", unique(fat_blood$tissue))
+VIF(model_blood_m1_plus)
+paste("Model M3 Interaction", unique(fat_blood$tissue))
+VIF(model_skin_m3_plus)
+
+```
+
+```{r}
+## Just hardy 5
+fat_blood_5 <- fat_blood %>% filter(DTHHRDY_factor == "5")
+fat_skin_5 <- fat_skin %>% filter(DTHHRDY_factor == "5")
+
+model_blood_m1_5 <- (lm(blood_zscore ~ TRISCHD, data = fat_blood_5))
+model_blood_m2_5 <- (lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood_5))
+
+
+
+model_skin_m3_5 <- (lm(skin_zscore ~ TRISCHD, data = fat_skin_5))
+model_skin_m4_5 <- (lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin_5))
+
+
+## Print out matt requested
+paste("Model M1 Hardy 5", unique(fat_blood$tissue))
+summary(model_blood_m1_5)$coefficients
+paste("Model M2 Hardy 5", unique(fat_blood$tissue))
+summary(model_blood_m2_5)$coefficients
+paste("Model M3 Hardy 5", unique(fat_blood$tissue))
+summary(model_skin_m3_5)$coefficients
+paste("Model M4 Hardy 5", unique(fat_blood$tissue))
+summary(model_skin_m4_5)$coefficients
+
+
+fat_skin_5 %>%
+    ggplot(., aes(TRISCHD, HBA1, color = DTHHRDY_factor)) +
+    geom_point()
+
+```
+
+
+```{r}
+## Just hardy no_5
+fat_blood_no_5 <- fat_blood %>% filter(DTHHRDY_factor != "5")
+fat_skin_no_5 <- fat_skin %>% filter(DTHHRDY_factor != "5")
+
+model_blood_m1_no_5 <- (lm(blood_zscore ~ TRISCHD, data = fat_blood_no_5))
+model_blood_m2_no_5 <- (lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood_no_5))
+
+
+
+model_skin_m3_no_5 <- (lm(skin_zscore ~ TRISCHD, data = fat_skin_no_5))
+model_skin_m4_no_5 <- (lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin_no_5))
+
+
+## Print out matt requested
+paste("Model M1 Hardy no_5", unique(fat_blood$tissue))
+summary(model_blood_m1_no_5)$coefficients
+paste("Model M2 Hardy no_5", unique(fat_blood$tissue))
+summary(model_blood_m2_no_5)$coefficients
+paste("Model M3 Hardy no_5", unique(fat_blood$tissue))
+summary(model_skin_m3_no_5)$coefficients
+paste("Model M4 Hardy no_5", unique(fat_blood$tissue))
+summary(model_skin_m4_no_5)$coefficients
+
+
+fat_skin_no_5 %>%
+    ggplot(., aes(TRISCHD, HBA1, color = DTHHRDY_factor)) +
+    geom_point()
+
+```
+Test if blood is associated with anything else.
+```{r}
+random_tissues <- c("brain_putamen__basal_ganglia", "liver", "nerve_tibial", "adrenal_gland")
+
+
+test_hba1_cor <- left_join(across_tissue_skin, all_hba1) %>%
+    filter(tissue %in% random_tissues)
+pdf("data_out/hba1_skin_gene_comparisons.pdf", height = 8, width = 14)
+for (cur_gene in skin_top_genes) {
+    if (cur_gene == "RP1-193H18.3") {
+        next()
+    }
+    plots <- list()
+    for (cur_tiss in random_tissues) {
+        new_dat <- filter(test_hba1_cor, tissue == cur_tiss)
+        if (unique(is.na(new_dat[,cur_gene])) == TRUE |
+            unique(is.na(new_dat[,"HBA1"])) == TRUE){
+            plt <- new_dat %>%
+            ggplot(., aes_string("HBA1", cur_gene)) +
+            geom_point() +
+           labs(title = cur_tiss)
+        plots[[cur_tiss]] <- plt
+            next()
+        }
+       test_res <- cor.test(new_dat[,"HBA1"], new_dat[,cur_gene]) 
+       tmp_subtitle <- paste0("corr: ",round(test_res$estimate,2),
+                              " pval: ",format.pval(test_res$p.value))
+       plt <- new_dat %>%
+            ggplot(., aes_string("HBA1", cur_gene)) +
+            geom_point() +
+           labs(title = cur_tiss,
+                subtitle = tmp_subtitle)
+        plots[[cur_tiss]] <- plt
+    }
+    final_plot <- (plots[[1]] + plots[[2]]) / (plots[[3]] + plots[[4]])
+    print(final_plot)
+    
+}
+dev.off()
+```
+
+
+
+Parse out vent story
+```{r}
+
+ggplot(phen_dat, aes(log10(DTHVNTD))) +
+    geom_histogram()
+
+
+ggplot(phen_dat, aes(DTHVNTD, TRISCHD, color = (DTHRFGD))) +
+    geom_point() +
+    labs(title = "Time on Vent Compared to Ischemic Time",
+         x = "Log10 Hours on Ventillator",
+         y = "Ischemic Time") +
+    scale_x_continuous(
+        trans = "log10",
+        breaks = c(.5, 1, 5, 10, 24, 100, 300, 1000, 10000)
+    )
+
+```
+
+Include vent time as factor 
+```{r}
+phen_dat_vent <- select(phen_dat, SUBJID, TRVNTSR_edit)
+fat_blood_5 <- left_join(fat_blood_5, phen_dat_vent)
+model_blood_m1_5 <- (lm(blood_zscore ~ TRISCHD, data = fat_blood_5))
+model_blood_m2_5 <- (lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood_5))
+model_blood_m2_plus_5 <- (lm(blood_zscore ~ HBA1 + TRISCHD + TRVNTSR_edit, data = fat_blood_5))
+
+
+fat_skin_5 <- left_join(fat_skin_5, phen_dat_vent)
+
+model_skin_m3_5 <- (lm(skin_zscore ~ TRISCHD, data = fat_skin_5))
+model_skin_m4_5 <- (lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin_5))
+model_skin_m4_5_plus <- (lm(skin_zscore ~ HBA1 + TRISCHD + TRVNTSR_edit, data = fat_skin_5))
+
+## Print out matt requested
+paste("Model M2 with Time on Vent", unique(fat_blood$tissue))
+summary(model_blood_m2_plus_5)$coefficients
+paste("Model M4 with Time on Vent", unique(fat_blood$tissue))
+summary(model_skin_m4_5_plus)$coefficients
+
+```
 
 
 
