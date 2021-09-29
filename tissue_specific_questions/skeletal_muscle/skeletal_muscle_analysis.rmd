@@ -66,5 +66,52 @@ ggplot(final_dat, aes(x = SMTSISCH, y = G, color = as.factor(DTHVNT))) +
 lm_dat <- filter(final_dat, DTHVNT != 99, !is.na(DTHVNT))
 
 summary(lm(G ~ SMTSISCH + DTHVNT + AGE + SEX, data = lm_dat))
+
+
+ggplot(final_dat, aes(x = SMTSISCH, y = E.2, color = as.factor(DTHVNT))) +
+    geom_point(alpha = .5)
+
+ggplot(final_dat, aes(x = SMRIN, y = E.2, color = as.factor(DTHHRDY))) +
+    geom_point(alpha = .5)
+
+ggplot(final_dat, aes(x = SMTSISCH, y = E.2, color = as.factor(DTHHRDY))) +
+    geom_point(alpha = .5)
+
+ggplot(final_dat, aes(x = SMTSISCH, y = E.1, color = as.factor(DTHHRDY))) +
+    geom_point(alpha = .5)
+
+ggplot(final_dat, aes(x = SMTSISCH, y = D, color = as.factor(DTHHRDY))) +
+    geom_point(alpha = .5)
+
+
+
 ```
+Finding overlaps between muscle genes and fast and slow twitch genes in our
+dataset
+```{r}
+mouse_twitch_dat <- read.csv("data_in/mouse_skeletal_fast_slow_markers.csv")
+mouse_twitch_dat <- mutate(mouse_twitch_dat,
+                           twitch = ifelse(average_logFC_scRNA.seq > 0, "fast", "slow"),
+                           human_gene = toupper(Gene))
+all_clusters<- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+muscle_cluster <- all_clusters$muscle_skeletal
+
+fast_twitch <- filter(mouse_twitch_dat, twitch == "fast")$human_gene
+slow_twitch <- filter(mouse_twitch_dat, twitch == "slow")$human_gene
+
+unlist(lapply(muscle_cluster, function(x){ sum(x %in% fast_twitch)}))
+unlist(lapply(muscle_cluster, function(x){ sum(x %in% slow_twitch)}))
+
+## No clear fast vs slow twitch, maybe E.2 has more fast twitch and A has more
+## slow twitch but that's about it. Let me find out which genes come from which
+## clusters though
+
+fast_col <- t(as.data.frame(lapply(
+    muscle_cluster, function(x){ paste(x[x %in% fast_twitch],collapse = "; ")})))
+slow_col <- t(as.data.frame(lapply(
+    muscle_cluster, function(x){ paste(x[x %in% slow_twitch],collapse = "; ")})))
+twitch_comparison <- cbind(fast_col,slow_col)
+colnames(twitch_comparison) <- c("fast_twitch", "slow_twitch")
+```
+
 
