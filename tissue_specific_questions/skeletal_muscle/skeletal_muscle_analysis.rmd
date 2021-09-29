@@ -113,5 +113,145 @@ slow_col <- t(as.data.frame(lapply(
 twitch_comparison <- cbind(fast_col,slow_col)
 colnames(twitch_comparison) <- c("fast_twitch", "slow_twitch")
 ```
+Limit data to only ventillator individuals to test the "active before death" hypothesis
 
+```{r}
+
+vent_final <- final_dat %>%
+    filter(DTHVNT == 1) %>%
+    mutate(vent_group = case_when(
+        DTHVNTD >= 24 & TRISCHD > 500 ~ "group_2",
+        DTHVNTD <24 & TRISCHD > 500 ~ "group_1",
+        TRUE ~ "group_3"
+    ))
+
+
+
+ggplot(vent_final, aes(DTHVNTD, TRISCHD, color = factor(vent_group))) +
+    geom_point() +
+    labs(title = "Time on Vent Compared to Ischemic Time",
+         x = "Log10 Hours on Ventillator",
+         y = "Ischemic Time") +
+    scale_x_continuous(
+        trans = "log10",
+        breaks = c(.5, 1, 5, 10, 24, 100, 300, 1000, 10000)
+    )
+
+
+ggplot(vent_final, aes(x = SMTSISCH, y = E.2, color = as.factor(vent_group))) +
+    geom_point(alpha = .5)
+
+ggplot(final_dat, aes(x =  as.factor(DTHHRDY), y = E.2, color = as.factor(DTHHRDY))) +
+    ggforce::geom_sina(alpha = .5)
+
+ggplot(vent_final, aes(x =  as.factor(vent_group), y = E.2, color = as.factor(vent_group))) +
+    ggforce::geom_sina(alpha = .5)
+
+
+
+ggplot(final_dat, aes(x =  as.factor(MHNPHYS4W), y = E.2, color = as.factor(MHNPHYS4W), shape = as.factor(DTHHRDY))) +
+    ggforce::geom_sina(alpha = .5)
+
+
+```
+
+Histology randomizer
+```{r}
+top_muscle <- head(arrange(final_dat, desc(E.2)), 5)
+bot_muscle <- head(arrange(final_dat, (E.2)), 5)
+
+pre_shuffle <- rbind(top_muscle, bot_muscle) %>% select(SAMPID) %>%
+    mutate(Marc_notes = "")
+set.seed(123)
+shuffler <- sample(nrow(pre_shuffle))
+shuffled <- pre_shuffle[shuffler,]
+write.csv(shuffled,"data_out/blinded_muscle_samples.csv",row.names = F)
+
+shuffled$SAMPID %in% top_muscle$SAMPID
+
+
+marc_labels <- read.csv(file = "data_in/blinded_muscle_samples_marc_labeled.csv")
+
+marc_labels <- left_join(marc_labels, final_dat)
+
+
+ggplot(marc_labels, aes(Marc_notes, E.2)) +
+    ggforce::geom_sina()
+
+```
+
+Fat atrophy checker
+
+```{r}
+final_dat <- final_dat %>%
+    mutate(fat_mention = case_when(
+    str_detect(SMPTHNTS, "fat") ~ TRUE,
+    TRUE ~ FALSE),
+    atrophy_mention = case_when(
+        str_detect(SMPTHNTS, "atroph") ~ TRUE,
+                   TRUE ~ FALSE)
+    )
+)
+
+
+ggplot(final_dat, aes(x =  atrophy_mention, y = E.2, color =atrophy_mention)) +
+    ggforce::geom_sina(alpha = .5)
+
+
+ggplot(final_dat, aes(x =  fat_mention, y = E.2, color =fat_mention)) +
+    ggforce::geom_sina(alpha = .5)
+
+
+test_out <- CorrectionPlotter(final_dat, "E.2", c("AGE", "SEX"),"SMTSISCH")
+
+test_out$plot + geom_point(aes(color = as.factor(DTHHRDY)))
+```
+
+Compare our results with people who have critical illness myopathy
+
+```{r}
+sig_CIM_genes <- data.table::fread("https://static-content.springer.com/esm/art%3A10.1186%2Fs13395-019-0194-1/MediaObjects/13395_2019_194_MOESM2_ESM.txt") %>%
+    filter(FDR < 0.05)
+
+
+sig_CIM_genes <- sig_CIM_genes %>%
+    mutate(direction = ifelse(`FoldChange(ICU Patients vs. Control)` > 0,
+                              "higher_in_ICU",
+                              "lower_in_ICU"))
+
+high_ICU_genes <- sig_CIM_genes$`Column ID`[sig_CIM_genes$direction =="higher_in_ICU"]
+low_ICU_genes <- sig_CIM_genes$`Column ID`[sig_CIM_genes$direction =="lower_in_ICU"]
+
+
+high_icu_col <- t(as.data.frame(lapply(
+    muscle_cluster, function(x){ paste(x[x %in% high_ICU_genes],collapse = "; ")})))
+low_icu_col <- t(as.data.frame(lapply(
+    muscle_cluster, function(x){ paste(x[x %in% low_ICU_genes],collapse = "; ")})))
+icu_comparison <- as.data.frame(cbind(high_icu_col,low_icu_col))
+icu_comparison
+
+TotalOverlapFunction <- function(x, icu_df){sum(x %in% icu_df)}
+AllGenesInCluster <- function(x){length(x)}
+overlap_high_icu <- lapply(muscle_cluster,  function(x, icu_df){sum(x %in% high_ICU_genes)})
+overlap_low_icu <- lapply(muscle_cluster,  function(x, icu_df){sum(x %in% low_ICU_genes)})
+total_genes_in_clust <- lapply(muscle_cluster, function(x){length(x)})
+
+pre_bind <-as.data.frame(cbind(unlist(total_genes_in_clust),
+                               unlist(overlap_high_icu),
+                               unlist(overlap_low_icu)))
+
+new_cim_table <- cbind(pre_bind,icu_comparison)
+colnames(new_cim_table) <- c("N of genes", "N overlap with MIC upreg", "N overlap MIC downreg",
+                             "Genes overlap MIC upreg", "Genes overlap MIC downreg")
+#TNN1 downregulate in MIC according to paper, meaning lower levels are associated with MIC
+
+write.csv(new_cim_table, "data_out/CIM_overlaps.csv")
+
+
+```
+
+```{r}
+ggplot(final_dat, aes(factor(DTHHRDY), J, color = factor(DTHHRDY))) +
+    ggforce::geom_sina()
+```
 
