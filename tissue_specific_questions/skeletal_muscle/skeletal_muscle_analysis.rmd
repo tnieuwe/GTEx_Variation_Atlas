@@ -211,16 +211,16 @@ Compare our results with people who have critical illness myopathy
 
 ```{r}
 sig_CIM_genes <- data.table::fread("https://static-content.springer.com/esm/art%3A10.1186%2Fs13395-019-0194-1/MediaObjects/13395_2019_194_MOESM2_ESM.txt") %>%
-    filter(FDR < 0.05)
+    filter(FDR < 0.01)
 
 
 sig_CIM_genes <- sig_CIM_genes %>%
     mutate(direction = ifelse(`FoldChange(ICU Patients vs. Control)` > 0,
-                              "higher_in_ICU",
-                              "lower_in_ICU"))
+                              "higher_in_CIM",
+                              "lower_in_CIM"))
 
-high_ICU_genes <- sig_CIM_genes$`Column ID`[sig_CIM_genes$direction =="higher_in_ICU"]
-low_ICU_genes <- sig_CIM_genes$`Column ID`[sig_CIM_genes$direction =="lower_in_ICU"]
+high_ICU_genes <- sig_CIM_genes$`Column ID`[sig_CIM_genes$direction =="higher_in_CIM"]
+low_ICU_genes <- sig_CIM_genes$`Column ID`[sig_CIM_genes$direction =="lower_in_CIM"]
 
 
 high_icu_col <- t(as.data.frame(lapply(
@@ -246,6 +246,75 @@ colnames(new_cim_table) <- c("N of genes", "N overlap with MIC upreg", "N overla
 #TNN1 downregulate in MIC according to paper, meaning lower levels are associated with MIC
 
 write.csv(new_cim_table, "data_out/CIM_overlaps.csv")
+
+## Make a 2 by 2 chi-sqare test
+all_low_n_E2_genes <- data.frame(genes = unique(c(muscle_cluster$E.2,sig_CIM_genes$`Column ID`)))
+all_low_n_E2_genes <- all_low_n_E2_genes %>%
+    mutate(in_paper = genes %in% low_ICU_genes,
+           in_cluster = genes %in% muscle_cluster$E.2)
+
+table(all_low_n_E2_genes$in_paper, all_low_n_E2_genes$in_cluster)
+
+## Marcs idea
+
+all_low_n_all_genes <- data.frame(genes = unique(c(unlist(muscle_cluster),sig_CIM_genes$`Column ID`)))
+
+all_low_n_all_genes <- all_low_n_all_genes %>%
+    mutate(in_paper = case_when(
+        genes %in% low_ICU_genes ~ "Low MIC gene",
+        TRUE ~ "Not in low MIC"
+        
+    ),
+           in_cluster = case_when(
+               genes %in% muscle_cluster$E.2 ~ "In E.2",
+               TRUE ~ "Not in E.2"
+           ))
+
+table(all_low_n_all_genes$in_paper, all_low_n_all_genes$in_cluster)
+
+## Logic one: Of all cluster genes how many are in E.2
+## of all down reg gene how many are in E2
+
+## Another idea
+sig_CIM_genes <- sig_CIM_genes %>%
+    mutate(in_E2 = `Column ID` %in% muscle_cluster$E.2)
+chisq_out <- chisq.test(sig_CIM_genes$in_E2, sig_CIM_genes$direction)
+
+chisq_out$observed
+chisq_out$expected
+
+
+## Matts analysis
+
+sig_CIM_genes <- mutate(sig_CIM_genes,
+                        in_high_var = `Column ID` %in% unlist(muscle_cluster))
+
+table(sig_CIM_genes$direction, sig_CIM_genes$in_high_var)
+
+matt_fish_1 <- fisher.test(sig_CIM_genes$direction, sig_CIM_genes$in_high_var)
+
+ind <- which(sig_CIM_genes$in_high_var)
+
+chisq.test(sig_CIM_genes$direction, sig_CIM_genes$in_high_var)$observed
+chisq.test(sig_CIM_genes$direction[ind], sig_CIM_genes$in_E2[ind])$observed
+## Fish 2
+
+table(sig_CIM_genes$direction[ind], sig_CIM_genes$in_E2[ind])
+
+matt_fish_2 <- fisher.test(sig_CIM_genes$direction[ind], sig_CIM_genes$in_E2[ind])
+
+## Are these eqtls?
+sig_muscle_eqtls <- data.table::fread("data_in/Muscle_Skeletal.v8.egenes.txt/Muscle_Skeletal.v8.egenes.txt") %>%
+    filter(qval < 0.05)
+
+## Get muscle_cluster overlaps
+overlapped_CIM_genes <- intersect(low_ICU_genes, muscle_cluster$E.2)
+
+
+sig_muscle_eqtls_overlap <- sig_muscle_eqtls %>%
+    filter(gene_name %in% overlapped_CIM_genes)
+
+
 
 
 ```
