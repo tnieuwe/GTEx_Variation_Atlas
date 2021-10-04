@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(patchwork)
 source("../../global_in/general_scripts.R")
 ```
 
@@ -191,7 +192,7 @@ final_dat <- final_dat %>%
         str_detect(SMPTHNTS, "atroph") ~ TRUE,
                    TRUE ~ FALSE)
     )
-)
+
 
 
 ggplot(final_dat, aes(x =  atrophy_mention, y = E.2, color =atrophy_mention)) +
@@ -313,14 +314,122 @@ overlapped_CIM_genes <- intersect(low_ICU_genes, muscle_cluster$E.2)
 
 sig_muscle_eqtls_overlap <- sig_muscle_eqtls %>%
     filter(gene_name %in% overlapped_CIM_genes)
+nrow(sig_muscle_eqtls_overlap)
+e2_eqtls_overlap <- sig_muscle_eqtls %>%
+    filter(gene_name %in% muscle_cluster$E.2)
+nrow(e2_eqtls_overlap)
 
-
-
+## Print out rsids for steph
+write.table(e2_eqtls_overlap$rs_id_dbSNP151_GRCh38p7,
+            "data_out/VCF_to_pull_for_muscle.txt",row.names = F,col.names = F,quote = F)
 
 ```
 
 ```{r}
 ggplot(final_dat, aes(factor(DTHHRDY), J, color = factor(DTHHRDY))) +
     ggforce::geom_sina()
+```
+
+Test if eQTLS are effected by hardy score
+
+Read in the various data forms
+```{r}
+require(vcfR)
+## BED files of counts
+eqtl_exprs <- data.table::fread("data_in/Muscle_Skeletal.v8.normalized_expression.bed",header = T)
+
+## read in VCF
+skeletal_vcf <- read.vcfR("data_in/GTEx_57_muscle_eQTLs.vcf")
+skeletal_snp_dat <- as.data.frame(cbind(skeletal_vcf@fix, skeletal_vcf@gt))
+
+```
+
+Transform data to be used in analysis
+Columns will be genes, rows will be individuals.
+```{r}
+## Filter genes to ones of interest.
+rsids_avaialable <- filter(e2_eqtls_overlap, rs_id_dbSNP151_GRCh38p7 %in% skeletal_snp_dat$ID)
+eqtl_exprs <- filter(eqtl_exprs, gene_id %in% rsids_avaialable$gene_id)
+## get a gene table
+gtab <- select(rsids_avaialable, gene_id, gene_name, ID = rs_id_dbSNP151_GRCh38p7) %>% unique()
+
+## Create hardy dat
+hardy_dat <- phen_dat %>%
+    select(SUBJID, DTHHRDY) %>%
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c("1", "2", "3", "4", "0")))
+
+## Make an exprs matrix to loop through
+loop_gene_tab <- eqtl_exprs %>% select(-`#chr`, -start, -end) %>% left_join(gtab, .)
+
+
+```
+
+
+Attempt the analysis with a for loop to make it easier and readable
+```{r}
+
+plot_list <- list()
+analysis_out <- NULL
+hold_off_genes <- c("CTC-338M12.1", "CTD-2083E4.7", "CTD-3064M3.7")
+
+for (rsid_ind in seq(nrow(rsids_avaialable))) {
+    cur_rsid <- rsids_avaialable$rs_id_dbSNP151_GRCh38p7[rsid_ind]
+    cur_gene_id <- rsids_avaialable$gene_id[rsid_ind]
+    cur_gene_name <- rsids_avaialable$gene_name[rsid_ind]
+    
+    # ##Temp fix
+    # if (cur_gene_name %in% hold_off_genes) {
+    #     next()
+    # }
+    # 
+    gene_col <- filter(loop_gene_tab, ID == cur_rsid) %>% 
+        select(-gene_id, -gene_name, -ID) %>%
+        t() %>%
+        as.data.frame() %>%
+        rownames_to_column("SUBJID")
+    colnames(gene_col)[2] <- cur_gene_id
+    snp_col <- filter(skeletal_snp_dat, ID == cur_rsid) %>%
+        select(starts_with("GTEX")) %>%
+        t() %>%
+        as.data.frame() %>%
+        rownames_to_column("SUBJID")
+    colnames(snp_col)[2] <- cur_rsid
+    analysis_dat <- left_join(snp_col, gene_col) %>%
+        left_join(., hardy_dat) %>% drop_na()
+    
+    cur_plot_simple <- ggplot(analysis_dat, aes_string(x = cur_rsid, y = cur_gene_id)) +
+        ggforce::geom_sina() +
+        labs(y= paste0(cur_gene_name))
+    
+    cur_plot_hardy <- ggplot(analysis_dat, aes_string(x = cur_rsid, y = cur_gene_id,
+                                    color = "DTHHRDY_factor")) +
+        ggforce::geom_sina() +
+        labs(y= paste0(cur_gene_id))
+    
+    formula_string <- paste0(cur_gene_id, " ~ ", cur_rsid, " + DTHHRDY_factor")
+    temp_model <- lm(as.formula(formula_string), data = analysis_dat)
+    new_rows <- cbind(broom::tidy(summary(temp_model)), cur_gene_name)
+    analysis_out <- rbind(analysis_out, new_rows)
+    
+    comb_plot <- cur_plot_simple / cur_plot_hardy
+    
+    plot_list[[cur_rsid]] <- comb_plot
+}
+
+pdf("data_out/eqtl_vs_hardy.pdf", width = 8, height = 10)
+for (plot_ind in seq_along(plot_list)) {
+    print(plot_list[[plot_ind]])
+}
+dev.off()
+```
+Redo above analysis with Z-score
+```{r}
+
+```
+
+
+Chisq for snps vs hardy 
+```{r}
+
 ```
 
