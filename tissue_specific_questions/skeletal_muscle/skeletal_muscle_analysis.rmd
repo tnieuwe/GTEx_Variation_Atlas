@@ -342,6 +342,15 @@ eqtl_exprs <- data.table::fread("data_in/Muscle_Skeletal.v8.normalized_expressio
 skeletal_vcf <- read.vcfR("data_in/GTEx_57_muscle_eQTLs.vcf")
 skeletal_snp_dat <- as.data.frame(cbind(skeletal_vcf@fix, skeletal_vcf@gt))
 
+## Read in eqtl covariates
+skeletal_cov <- data.table::fread("data_in/Muscle_Skeletal.v8.covariates.txt") %>%
+    column_to_rownames(var = "ID") %>%
+    t() %>%
+    as.data.frame() %>%
+    rownames_to_column("SUBJID")
+
+covariate_string <- paste0(colnames(skeletal_cov)[-1],
+                           collapse = " + ")
 ```
 
 Transform data to be used in analysis
@@ -369,19 +378,17 @@ Attempt the analysis with a for loop to make it easier and readable
 ```{r}
 
 plot_list <- list()
+steph_plots <- list()
 analysis_out <- NULL
+analysis_out_linear <- NULL
+chi_table <- NULL
 hold_off_genes <- c("CTC-338M12.1", "CTD-2083E4.7", "CTD-3064M3.7")
 
 for (rsid_ind in seq(nrow(rsids_avaialable))) {
     cur_rsid <- rsids_avaialable$rs_id_dbSNP151_GRCh38p7[rsid_ind]
     cur_gene_id <- rsids_avaialable$gene_id[rsid_ind]
     cur_gene_name <- rsids_avaialable$gene_name[rsid_ind]
-    
-    # ##Temp fix
-    # if (cur_gene_name %in% hold_off_genes) {
-    #     next()
-    # }
-    # 
+
     gene_col <- filter(loop_gene_tab, ID == cur_rsid) %>% 
         select(-gene_id, -gene_name, -ID) %>%
         t() %>%
@@ -395,7 +402,16 @@ for (rsid_ind in seq(nrow(rsids_avaialable))) {
         rownames_to_column("SUBJID")
     colnames(snp_col)[2] <- cur_rsid
     analysis_dat <- left_join(snp_col, gene_col) %>%
-        left_join(., hardy_dat) %>% drop_na()
+        left_join(., hardy_dat) %>% drop_na() %>%
+        left_join(.,skeletal_cov)
+    
+    
+    ## Chisq analysis
+    chi_res <- chisq.test(analysis_dat[,2], analysis_dat$DTHHRDY_factor)
+    chi_sig <- chi_res$p.value <0.05
+    new_chi_row <- c(broom::tidy(chi_res), cur_rsid, cur_gene_name)
+    chi_table <- rbind(chi_table, new_chi_row)
+    ##Plotting
     
     cur_plot_simple <- ggplot(analysis_dat, aes_string(x = cur_rsid, y = cur_gene_id)) +
         ggforce::geom_sina() +
@@ -404,13 +420,62 @@ for (rsid_ind in seq(nrow(rsids_avaialable))) {
     cur_plot_hardy <- ggplot(analysis_dat, aes_string(x = cur_rsid, y = cur_gene_id,
                                     color = "DTHHRDY_factor")) +
         ggforce::geom_sina() +
-        labs(y= paste0(cur_gene_id))
+        labs(y= paste0(cur_gene_id),
+             subtitle = paste0("Sig chi: ",chi_sig))
     
-    formula_string <- paste0(cur_gene_id, " ~ ", cur_rsid, " + DTHHRDY_factor")
+    formula_string <- paste0(cur_gene_id, " ~ ", cur_rsid, " + DTHHRDY_factor", "+", covariate_string)
+
+    
+    
+    ## Factor model
     temp_model <- lm(as.formula(formula_string), data = analysis_dat)
+   
     new_rows <- cbind(broom::tidy(summary(temp_model)), cur_gene_name)
     analysis_out <- rbind(analysis_out, new_rows)
     
+    
+    
+    
+    ## Linear model
+    analysis_dat_linear <- analysis_dat
+    analysis_dat_linear[,2] <- case_when(
+        analysis_dat_linear[,2] == "0/0" ~ 0,
+        analysis_dat_linear[,2] == "0/1" ~ 1,
+        analysis_dat_linear[,2] == "1/1" ~ 2
+    )
+    
+    linear_model <- lm(as.formula(formula_string), data = analysis_dat_linear)
+    ## Steph models
+    ## exprs ~ SNP
+    simple_model <- lm(as.formula(paste0(cur_gene_id, " ~ ", cur_rsid)),
+                       data = analysis_dat_linear)
+    
+    ## simple models out
+    simple_rows <- cbind(broom::tidy(simple_model),
+                         cur_gene_name, cur_rsid)
+    
+    simple_output <- rbind(simple_output, simple_rows)
+    
+    ## Steph comparison anova
+    anova_out <- anova(simple_model,linear_model)
+    anova_sig <- broom::tidy(anova_out)$p.value[2] < 0.05
+    
+   
+    new_linear <- cbind(broom::tidy(summary(linear_model)), cur_gene_name, anova_sig)
+    analysis_out_linear <- rbind(analysis_out_linear, new_linear)
+    
+    
+    analysis_dat_linear <- mutate(analysis_dat_linear,
+        DTHHRDY_linear = ifelse(DTHHRDY == 0, 5, DTHHRDY)
+    )
+    ## steph plot
+    steph_plot <- ggplot(analysis_dat_linear, aes_string(x = cur_rsid, y = "DTHHRDY_linear")) +
+        geom_jitter(aes(color = DTHHRDY_factor)) +
+        geom_smooth(method = 'lm')
+   
+    steph_plots[[cur_rsid]] <- steph_plot
+    
+    ## Combine the plots
     comb_plot <- cur_plot_simple / cur_plot_hardy
     
     plot_list[[cur_rsid]] <- comb_plot
@@ -422,14 +487,68 @@ for (plot_ind in seq_along(plot_list)) {
 }
 dev.off()
 ```
-Redo above analysis with Z-score
+Linear Analysis
 ```{r}
+adj_linear <- analysis_out_linear %>% filter((startsWith(term, "rs"))) %>%
+    mutate(p_adj = p.adjust(p.value,method = "fdr"),
+           sig_adj = p_adj < 0.05,
+           gws_sig = p.value < 5e-8)
+
+table(adj_linear$sig_adj)
+table(adj_linear$gws_sig)
+
+non_sig <- filter(adj_linear, sig_adj == F)
 
 ```
 
 
-Chisq for snps vs hardy 
+Redo above analysis with Z-score
 ```{r}
+z_score_snps <- skeletal_snp_dat %>%
+    select(ID, starts_with("GTEX")) %>%
+    t() %>%
+    as.data.frame() 
 
+colnames(z_score_snps) <- z_score_snps[1,]
+z_score_snps_final <- z_score_snps[-1,] %>%
+    rownames_to_column("SUBJID") %>%
+    left_join(final_dat,.) %>%
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c("1","2","3","4","0")))
+
+
+zscore_eqtl_plots <- list()
+for (rsid_ind in seq(nrow(skeletal_snp_dat))) {
+    cur_rsid <- skeletal_snp_dat$ID[rsid_ind]
+    na_ind <- !(is.na(z_score_snps_final[,cur_rsid]) | is.na(z_score_snps_final$DTHHRDY_factor))
+    plot_dat <- z_score_snps_final[na_ind,]
+    classic_plot <- ggplot(plot_dat, aes_string(cur_rsid, "E.2")) +
+        ggforce::geom_sina()
+    hardy_plot <- ggplot(plot_dat, aes_string(cur_rsid, "E.2",
+                                                          color = "DTHHRDY_factor")) +
+        ggforce::geom_sina()
+    zscore_plot <- classic_plot/hardy_plot
+    zscore_eqtl_plots[[cur_rsid]] <- zscore_plot
+    
+    
+}
+
+```
+
+
+Do covariates correlate with Hardy?
+
+```{r}
+hardy_cov_test <- left_join(hardy_dat, skeletal_cov) %>%
+    mutate(DTHHRDY_linear = ifelse(DTHHRDY == 0, 5, DTHHRDY))
+
+hardy_inferred <- select(hardy_cov_test, DTHHRDY_linear, starts_with("Inferred")) %>%
+    drop_na()
+
+cor(hardy_inferred)
+
+(cor.test(hardy_inferred$DTHHRDY_linear, hardy_inferred$InferredCov1))
+
+ggplot(hardy_cov_test, aes(DTHHRDY_factor, InferredCov1)) +
+    ggforce::geom_sina()
 ```
 
