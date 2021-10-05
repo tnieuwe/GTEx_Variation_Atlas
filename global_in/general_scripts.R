@@ -259,3 +259,59 @@ GenesFromTissWiden <- function(GenesFromTissues_output){
   }
   return(all_bound)
 }
+
+
+TissuesPerSUBJID <- function(SUBJID_vector, samp_dat){
+  return_dat <- samp_dat %>%
+    mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
+    filter(SUBJID %in% SUBJID_vector) %>%
+    select(SUBJID, SMTSD) %>% unique() %>%
+    group_by(SMTSD) %>%
+    dplyr::count() %>%
+    arrange(desc(n))
+  return(return_dat)
+}
+
+
+CorrectionPlotter <- function(df, y_axis, corrected_by, x_axis, plot_type = NA){
+  ### The purpose of this function is to quickly allow me to visualize what
+  ### a plot would look like if I corrected for a certain factors.
+  
+  ## Correct plot variable if left NA
+  if (is.na(plot_type)) {
+    if (is.numeric(df[,x_axis])) {
+      plot_type  <- ifelse(length(table(df[,x_axis])) > 20, "point", "sina")
+    } else{
+      plot_type <- "sina"
+    }
+  }
+  ## Make sure numerics become factors
+  for (correction in corrected_by) {
+    if (is.numeric(df[,correction])) {
+      df[,correction]  <- ifelse(length(table(df[,correction])) > 20,
+                                 df[,correction],
+                                 factor(df[,correction]))
+    } else{
+      next()
+    }
+  }
+  
+  ## Remove NAs for corrected values
+  NA_ind <- !(rowSums(is.na(df[,corrected_by])) > 0)
+  df_for_model <- df[NA_ind,]
+  ## make the formula for the model to correct
+  correct_formula <- paste0(y_axis, "~", paste0(corrected_by,collapse = "+"))
+  new_model <- lm(as.formula(correct_formula), data = df_for_model)
+  corrected_y_name <- paste0(y_axis, "_corrected")
+  df_for_model[,corrected_y_name] <- new_model$residuals
+  pre_plot <- ggplot(df_for_model, aes_string(x_axis, corrected_y_name))
+  if (plot_type == "point") {
+    plot_out <- pre_plot + geom_point()
+  } else{
+    plot_out <- pre_plot + ggforce::geom_sina()
+  }
+  dat_out <- list()
+  dat_out[["plot"]] <- plot_out
+  dat_out[["model"]] <- new_model
+  return(dat_out)
+}
