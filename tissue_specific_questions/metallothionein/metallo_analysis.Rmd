@@ -19,6 +19,7 @@ library(lmerTest)
 key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
 phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
 ```
 
 Find all genes in our datas in the family
@@ -50,6 +51,8 @@ pre_cor_mat <- select(MT_genes, SUBJID, zscore, tissue) %>%
 
 cor_mat <- cor(pre_cor_mat, use = "pairwise.complete.obs")
 
+breaksList = seq(-1,1,by=.01)
+
 pheatmap(cor_mat,main = "MT-Zscore Pearson Correlations",
          filename = "data_out/MT_gene_correlation_heatmap.pdf",
          height = 8, width = 10,
@@ -68,7 +71,14 @@ for (cur_tiss in unique(mt_n_tiss$tissue)) {
     names(current_mt_genes) <- cur_tiss
     missing_vect <- append(missing_vect, current_mt_genes)
 }
-    
+ 
+
+## Get most clustering tissues
+dendo <- hclust(dist( cor_mat))
+plot(dendo)
+abline(h=1.4)
+clustered_dat <- cutree(dendo,h = 1.6) 
+cluster_tissues <- names(clustered_dat)[clustered_dat == 1]
 ```
 
 Permute across tissue correlations
@@ -107,15 +117,62 @@ for (cur_ind in seq(10)) {
 What does metallo correlate with?
 ```{r}
 MT_all_dat <- left_join(MT_genes, phen_dat) %>%
-    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)))
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)),
+           death_in_hospital = case_when(
+               DTHHRDY %in% c(0,3,4) ~ TRUE,
+               DTHHRDY %in% c(1,2) ~ FALSE
+           ))
 
 
 MT_all_dat %>%
-    filter(tissue == "liver") %>%
-    ggplot(., aes(factor(DTHHRDY), zscore)) +
+    filter(tissue == cluster_tissues) %>%
+    ggplot(., aes(factor(death_in_hospital), zscore)) +
     ggforce::geom_sina()
 
-model <- lmer(zscore ~ DTHHRDY_factor + TRISCHD+ (1|tissue) + WGHT, data = MT_all_dat)
+MT_cluster_dat <- filter(MT_all_dat, tissue == cluster_tissues) %>%
+    left_join(.,samp_dat)
+
+model <- lmer(zscore ~ death_in_hospital + TRISCHD + SEX + AGE + (1|tissue),
+              data = MT_cluster_dat)
 summary(model)
+
+## Compare death in hospital to hardy score
+MT_model_compare_dat <- filter(MT_cluster_dat, DTHHRDY_factor)
+
+model_death <- lmer(zscore ~ death_in_hospital + TRISCHD + (1|tissue),
+              data = MT_cluster_dat)
+model_hardy <- lmer(zscore ~ DTHHRDY_factor + TRISCHD + (1|tissue),
+              data = MT_cluster_dat)
+
+anova(model_death,model_hardy)
+
+
+## Compare hospital death and TRISCHD interaction
+model_interact <- lmer(zscore ~ death_in_hospital * TRISCHD + SEX + AGE + (1|tissue),
+              data = MT_cluster_dat)
+summary(model_interact)
+
+
+anova(model,model_interact)
+
+## Compare TRISCHD to SMTSICHD
+model_tiss_isch <- lmer(zscore ~ death_in_hospital + SMTSISCH + SEX + AGE + (1|tissue),
+              data = MT_cluster_dat)
+
+summary(model_tiss_isch)
+anova(model, model_tiss_isch)
+
+## Two random effects
+model_two_effects <- lmer(zscore ~ death_in_hospital + SMTSISCH + SEX + AGE +
+                              (1|tissue) + (1|SUBJID),
+              data = MT_cluster_dat)
+summary(model_two_effects)
+
+anova(model_tiss_isch, model_two_effects)
+
+### Print out model
+require(broom.mixed)
+tidy_model <- broom.mixed::tidy(model_two_effects)
+write.csv(tidy_model,file = "data_out/current_lmer_metallo_model.csv",row.names = F)
 ```
 
