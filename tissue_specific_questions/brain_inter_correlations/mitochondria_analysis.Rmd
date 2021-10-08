@@ -122,9 +122,10 @@ for (row_ind in seq(nrow(clusters_to_pull))) {
 }
 
 ## Generalized linear model
-for_model <- left_join(for_model, samp_dat)
+for_model <- left_join(for_model, samp_dat) %>%
+    left_join(.,phen_dat)
 
-model_out <- lmer(mito_cluster ~ SMRIN + SMTSISCH + (1|tissue) + (1|SUBJID), data = for_model)
+model_out <- lmer(mito_cluster ~ SMRIN + SMTSISCH + SEX + AGE + (1|tissue) + (1|SUBJID), data = for_model)
 summary(model_out)
 ```
 
