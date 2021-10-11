@@ -12,6 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(RColorBrewer)
+library(lme4)
+library(lmerTest)
 source("../../global_in/general_scripts.R")
 ```
 
@@ -125,16 +127,86 @@ for (row_ind in seq(nrow(clusters_to_pull))) {
 for_model <- left_join(for_model, samp_dat) %>%
     left_join(.,phen_dat)
 
+simple_model <- model_out <- lmer(mito_cluster ~ SMRIN + (1|tissue) + (1|SUBJID), data = for_model)
+
 model_out <- lmer(mito_cluster ~ SMRIN + SMTSISCH + SEX + AGE + (1|tissue) + (1|SUBJID), data = for_model)
 summary(model_out)
+
+anova(simple_model, model_out)
+
+## Creat obscene model and scale the values
+pre_norm_dat <- select(for_model, starts_with("SM")) %>%
+    select_if(~ !any(is.na(.))) %>%
+    select_if(is.numeric)
+
+pre_norm_dat <- pre_norm_dat[, sapply(pre_norm_dat, function(col) length(unique(col))) > 1]
+pre_norm_dat_cent <- sweep(pre_norm_dat,2,colMeans(pre_norm_dat))
+pre_join_norm_dat <- sweep(pre_norm_dat_cent,2, apply(pre_norm_dat_cent,2,sd),FUN = "/")
+
+pre_obscene <- for_model %>% select(mito_cluster, SUBJID, SAMPID, tissue, SEX, AGE)
+obscene_dat <- cbind(pre_obscene, pre_join_norm_dat)
+
+covariates <- colnames(obscene_dat)[-1:-4]
+obscene_formula <- ((paste0("mito_cluster ~",paste0(covariates,
+                                            collapse = " + "), " + (1|tissue) + (1|SUBJID)")))
+
+obscene_model <- lmer(as.formula(obscene_formula), data = obscene_dat)
+obscene_summary <- summary(obscene_model)
+
+original_model <- lmer(mito_cluster ~ SMRIN + SMTSISCH + SEX + AGE + (1|tissue) + (1|SUBJID), data = obscene_dat)
+
+anova(original_model, obscene_model)
+
+View(obscene_summary$coefficients)
+
+## Include PH and batch for final model
+obscene_dat_plus <- left_join(obscene_dat, select(for_model, SAMPID, MHBRNPH, SMNABTCH))
+obscene_dat_formula_plus <- ((paste0("mito_cluster ~",paste0(covariates,
+                                            collapse = " + "), "+ MHBRNPH + SMNABTCH + (1|tissue) + (1|SUBJID)"))) 
+obscene_model_plus <- lmer(as.formula(obscene_dat_formula_plus), data = obscene_dat_plus)
+obscene_model_summary <- summary(obscene_model_plus)
+
+tidy_with_intron_model <- broom.mixed::tidy(obscene_model_plus)
+
+## Remove intergenic variables SMSPLTRD and SMNTERRT as mitochondria genes lack
+## introns so this is a dog wagging the tail situation
+no_intron_formula <- str_replace(obscene_dat_formula_plus, "[+] SMSPLTRD [+]","+")
+no_intron_formula <- str_replace(no_intron_formula, "[+] SMNTERRT [+]","+")
+
+
+
+obscene_model_no_intron <- lmer(as.formula(no_intron_formula), data = obscene_dat_plus)
+
+no_intron_summary <- summary(obscene_model_no_intron)
+
+tidy_final_model <- broom.mixed::tidy(obscene_model_no_intron)
+
+### Plotting
+
+ggplot(obscene_dat, aes(SMSPLTRD, mito_cluster, color = tissue)) +
+    geom_point(alpha = .5) +
+    theme_classic() +
+    theme(legend.position = "bottom")
+
+ggplot(obscene_dat, aes(SMRIN, mito_cluster, color = tissue)) +
+    geom_point(alpha = .5) +
+    theme_classic() +
+    theme(legend.position = "bottom")
+
+ggplot(obscene_dat, aes(SMSPLTRD, SMRIN, color = tissue)) +
+    geom_point(alpha = .5) +
+    theme_classic() +
+    theme(legend.position = "bottom")
 ```
 
-Substantia nigra question
+Make sure SMSPLTRD isn't associated with a factor
 ```{r}
-substantia_nigra <- brain_profs$brain_substantia_nigra %>%
-    left_join(., phen_dat)
+SMSPLTRD_model_out <- lmer(SMSPLTRD ~  + SMNABTCH + SMNABTCHD + SMGEBTCH + SMCENTER  + (1|tissue) + (1|SUBJID), data = for_model)
 
-ggplot(substantia_nigra, aes(AGE, A, color = factor(MHPRKNSN))) +
-    geom_point()
+SMSPLTRD_summary <- summary(SMSPLTRD_model_out)
+
 ```
+
+
+
 
