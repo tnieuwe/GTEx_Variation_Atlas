@@ -1,5 +1,5 @@
 ---
-title: "Understanding mitochondria genes"
+title: "Understanding mitochondria genes in brain"
 author: "Tim N"
 date: "10/8/2021"
 output: html_document
@@ -17,6 +17,7 @@ library(lmerTest)
 source("../../global_in/general_scripts.R")
 ```
 
+Loading important data
 ```{r}
 cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
 manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
@@ -25,7 +26,7 @@ phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
 samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
 ```
 
-
+Common brain mitchondrial genes
 ```{r}
 cluster_mito <- c("MTCO3P12",
 "MTCO1P12",
@@ -43,12 +44,14 @@ cluster_mito <- c("MTCO3P12",
 
 
 
-Load a brain z-score with mitochondrial genes
+Preliminary analysis on brain mitochondrial Z-scores to better understand
+possible drivers. Only subject wide phenotypes first
 ```{r}
 brain_profs <- ZscoreProfilePuller(r_name_vect =  c("brain_cerebellum",
                                                     "brain_cortex",
                                                     "brain_substantia_nigra"),
                                    location = "../../MARCC output/variance_profiles_kendall/")
+#Analyze cerebellum and cortex
 cereb_mito <- brain_profs$brain_cerebellum %>% select(SUBJID, cereb_samp = SAMPID, cereb_mito = A)
 cereb_samp <- brain_profs$brain_cerebellum %>% select(SUBJID, SAMPID, cereb_mito = A)
 cortex_mito <- brain_profs$brain_cortex %>% select(SUBJID,corex_sam = SAMPID, cortex_mito = A)
@@ -57,7 +60,9 @@ cortex_samp <- brain_profs$brain_cortex %>% select(SUBJID, SAMPID, cortex_mito =
 join_brain <- left_join(cereb_mito,cortex_mito)%>%
     left_join(.,phen_dat)
 
+## Plot out comparisons
 
+## There seems to be in subject correlations
 join_brain %>%
     ggplot(., aes(cereb_mito, cortex_mito)) +
     geom_point() 
@@ -69,9 +74,10 @@ join_brain %>%
 join_brain %>%
     ggplot(., aes((DTHRFGD), cortex_mito)) +
     geom_point()
+
 ```
 
-
+Include the sample data in the analysis
 ```{r}
 cereb_samp <- left_join(cereb_samp,phen_dat) %>% left_join(., samp_dat) %>%
     mutate(SMGEBTCHD = as.Date(SMGEBTCHD,format = "%m/%d/%Y"))
@@ -82,25 +88,31 @@ ggplot(cereb_samp, aes(factor(SMGEBTCHT), cereb_mito)) +
 ggplot(cortex_samp, aes(SMRIN, cortex_mito)) +
     geom_point()
 
-
+## Create a simple model including RIN
 summary(lm(cereb_mito ~ SMRIN + SMGNSDTC, data = cereb_samp))
 ```
-Test if mito is all RIN
+
+Load in all Z-scores from the brain related to mitochondria
 ```{r}
 ## Get all brain mito clusters labeled
 clusters_to_pull <- NULL
+## For each tissue
 for (tiss_ind in seq_along(cluster_list)) {
     current_tiss <- names(cluster_list)[tiss_ind]
+    ## Tissue must be brain
     if (!str_detect(current_tiss, "brain")) {
         next()
     }
     current_tiss_clust <- cluster_list[[tiss_ind]]
+    ## For each cluster in a tissue
     for (cluster_ind in seq_along(current_tiss_clust)) {
         cluster_name <- names(current_tiss_clust)[cluster_ind]
         cur_genes <- current_tiss_clust[[cluster_ind]]
+        ## Excluding X clusters
         if (cluster_name == "X") {
             next()
         }
+        ## If mitochondria genes are found in the cluster, mark it to be pulled
         if (any(cluster_mito %in% cur_genes)) {
             clusters_to_pull<- rbind(clusters_to_pull,
                                      cbind(current_tiss,cluster_name))
@@ -109,76 +121,91 @@ for (tiss_ind in seq_along(cluster_list)) {
     }
 }
 
-## Pull said clusters
+## Pull said clusters into a list
 profs_mito <- ZscoreProfilePuller(r_name_vect = clusters_to_pull[,1],
                                   "../../MARCC output/variance_profiles_kendall/")
 
 for_model <- NULL
-
+## Pull specific clusters from the ZscoreProfilePuller list
 for (row_ind in seq(nrow(clusters_to_pull))) {
+    ## Subset out tissue
     current_df <- profs_mito[[clusters_to_pull[row_ind,1]]]
+    ## Subset out from table required data
     new_rows <- cbind(current_df[,c("SUBJID", "SAMPID", clusters_to_pull[row_ind,2])],
              clusters_to_pull[row_ind,1])
     colnames(new_rows) <- c("SUBJID", "SAMPID", "mito_cluster", "tissue")
+    ## Join the data for the output model
     for_model <- rbind(for_model, new_rows)
 }
 
-## Generalized linear model
+## Prepare data for generalized linear mixed model
 for_model <- left_join(for_model, samp_dat) %>%
     left_join(.,phen_dat)
-
+## Make initial simple linear model, random effects are always tissue and SUBJID
 simple_model <- model_out <- lmer(mito_cluster ~ SMRIN + (1|tissue) + (1|SUBJID), data = for_model)
 
+## Make a slightly more complex model to see in SMRIN is the main contributor
 model_out <- lmer(mito_cluster ~ SMRIN + SMTSISCH + SEX + AGE + (1|tissue) + (1|SUBJID), data = for_model)
 summary(model_out)
 
 anova(simple_model, model_out)
+## SMRIN is the main contributor
+```
 
-## Creat obscene model and scale the values
+```{r}
+### Create a very extensive model with all sample integer columns
+### and scale the values
+
+## Select numeric variables for normalization
 pre_norm_dat <- select(for_model, starts_with("SM")) %>%
     select_if(~ !any(is.na(.))) %>%
     select_if(is.numeric)
-
+## Make sure that the numeric values are unique
 pre_norm_dat <- pre_norm_dat[, sapply(pre_norm_dat, function(col) length(unique(col))) > 1]
+## Subtract mean before dividing by SD
 pre_norm_dat_cent <- sweep(pre_norm_dat,2,colMeans(pre_norm_dat))
 pre_join_norm_dat <- sweep(pre_norm_dat_cent,2, apply(pre_norm_dat_cent,2,sd),FUN = "/")
 
+## Rejoin previously used covariates
 pre_obscene <- for_model %>% select(mito_cluster, SUBJID, SAMPID, tissue, SEX, AGE)
 obscene_dat <- cbind(pre_obscene, pre_join_norm_dat)
 
+## Make a new formula
 covariates <- colnames(obscene_dat)[-1:-4]
 obscene_formula <- ((paste0("mito_cluster ~",paste0(covariates,
                                             collapse = " + "), " + (1|tissue) + (1|SUBJID)")))
-
+## Run the model
 obscene_model <- lmer(as.formula(obscene_formula), data = obscene_dat)
 obscene_summary <- summary(obscene_model)
 
+## Compare to the original model with scaled variables
 original_model <- lmer(mito_cluster ~ SMRIN + SMTSISCH + SEX + AGE + (1|tissue) + (1|SUBJID), data = obscene_dat)
 
 anova(original_model, obscene_model)
+## New model is better
+```
 
-View(obscene_summary$coefficients)
-
-## Include PH and batch for final model
+```{r}
+## Include PH and batch for final model, as these could be important variables
 obscene_dat_plus <- left_join(obscene_dat, select(for_model, SAMPID, MHBRNPH, SMNABTCH))
 obscene_dat_formula_plus <- ((paste0("mito_cluster ~",paste0(covariates,
-                                            collapse = " + "), "+ MHBRNPH + SMNABTCH + (1|tissue) + (1|SUBJID)"))) 
+                                            collapse = " + "),
+                                     "+ MHBRNPH + SMNABTCH + (1|tissue) + (1|SUBJID)"))) 
 obscene_model_plus <- lmer(as.formula(obscene_dat_formula_plus), data = obscene_dat_plus)
 obscene_model_summary <- summary(obscene_model_plus)
 
 tidy_with_intron_model <- broom.mixed::tidy(obscene_model_plus)
 
 ## Remove intergenic variables SMSPLTRD and SMNTERRT as mitochondria genes lack
-## introns so this is a dog wagging the tail situation
+## introns. These variables will of course correlate with mitochondria so they will
+## be removed as they don't explain the source of the variance.
 no_intron_formula <- str_replace(obscene_dat_formula_plus, "[+] SMSPLTRD [+]","+")
 no_intron_formula <- str_replace(no_intron_formula, "[+] SMNTERRT [+]","+")
-
-
 
 obscene_model_no_intron <- lmer(as.formula(no_intron_formula), data = obscene_dat_plus)
 
 no_intron_summary <- summary(obscene_model_no_intron)
-
+## Final model
 tidy_final_model <- broom.mixed::tidy(obscene_model_no_intron)
 
 ### Plotting
@@ -197,14 +224,6 @@ ggplot(obscene_dat, aes(SMSPLTRD, SMRIN, color = tissue)) +
     geom_point(alpha = .5) +
     theme_classic() +
     theme(legend.position = "bottom")
-```
-
-Make sure SMSPLTRD isn't associated with a factor
-```{r}
-SMSPLTRD_model_out <- lmer(SMSPLTRD ~  + SMNABTCH + SMNABTCHD + SMGEBTCH + SMCENTER  + (1|tissue) + (1|SUBJID), data = for_model)
-
-SMSPLTRD_summary <- summary(SMSPLTRD_model_out)
-
 ```
 
 
