@@ -128,7 +128,7 @@ MT_all_dat %>%
     filter(tissue == cluster_tissues) %>%
     ggplot(., aes(factor(death_in_hospital), zscore)) +
     ggforce::geom_sina()
-
+## Filter to only clustering tissues
 MT_cluster_dat <- filter(MT_all_dat, tissue == cluster_tissues) %>%
     left_join(.,samp_dat)
 
@@ -174,5 +174,47 @@ anova(model_tiss_isch, model_two_effects)
 require(broom.mixed)
 tidy_model <- broom.mixed::tidy(model_two_effects)
 write.csv(tidy_model,file = "data_out/current_lmer_metallo_model.csv",row.names = F)
+```
+
+Find clusters with large MT overlaps and pull their z-score
+```{r}
+tissues_with_clusters <- ClusterGeneOverlaps(all_MT, cluster_list,only_hits =  T) %>%
+    arrange(desc(n_intersect)) %>%
+    filter(n_intersect >= 4) %>% rownames_to_column(var="full_name") %>%
+    separate(full_name, into = c("tissue", "cluster"), sep = "-")
+
+## Loop through clusters to do analysis?
+profile_list <- ZscoreProfilePuller(tissues_with_clusters$tissue,
+                                    location = "../../MARCC output/variance_profiles_kendall/")
+
+profile_list<- lapply(profile_list,FUN = function(x) {
+    left_join(x, phen_dat) %>% left_join(., samp_dat) %>%
+        mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)),
+               death_in_hospital = case_when(
+               DTHHRDY %in% c(0,3,4) ~ TRUE,
+               DTHHRDY %in% c(1,2) ~ FALSE))
+        })
+analysis_out <- NULL
+for (cur_ind in seq(nrow(tissues_with_clusters))) {
+    cur_tiss <- tissues_with_clusters$tissue[cur_ind]
+    cur_clust <- tissues_with_clusters$cluster[cur_ind]
+    if (cur_clust == "X") {
+        next()
+    }
+    cur_dat <- profile_list[[cur_tiss]]
+    model_formula <- paste0(cur_clust,
+                            " ~ death_in_hospital + SMTSISCH + SEX + AGE")
+    temp_model <- lm(as.formula(model_formula),data = cur_dat)
+    new_rows <- cbind(cur_tiss,broom::tidy(temp_model))
+    analysis_out <- rbind(analysis_out, new_rows)
+}
+write.csv(analysis_out, "data_out/single_tissue_MT_hospital_models.csv",row.names = F)
+
+
+## Death in hospital sig?
+analysis_out %>% mutate(padj = p.adjust(p.value,method = "BH"),
+                        is_sig = padj <= 0.05) %>%
+    filter(startsWith(term, "death"))
+
 ```
 
