@@ -1,0 +1,224 @@
+---
+title: "SELE analysis"
+author: "Tim N"
+date: "10/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+```
+
+```{r}
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+```
+
+```{r}
+manual_curation_test <- manual_curation %>%
+    mutate(SELE = str_detect(genes, "SELE"),
+           CHI3L1  = str_detect(genes, "CHI3L1"))
+
+
+chi_res_1 <- chisq.test(manual_curation_test$ischemic_sig, manual_curation_test$SELE)
+chi_res_1$observed
+chi_res_1$expected
+
+
+chi_res <- chisq.test(manual_curation_test$CHI3L1, manual_curation_test$SELE)
+chi_res$observed
+chi_res$expected
+
+sele_vs_chi <- manual_curation_test %>%
+    filter(str_detect(label, "_[:digit:]"),
+           SELE == TRUE | CHI3L1 == TRUE)
+
+```
+See what SELE does across tissues
+```{r}
+SELE_dat <- GenesFromTissues(genes_of_int = c("SELE", "CD34", "PECAM1", "VCAM1", "CHI3L1"),
+                 key_dat = key_dat,vst_location = "../../Setup Code/output/",
+                 run_all_available = T) %>%
+    left_join(., phen_dat) %>%
+    left_join(., samp_dat)
+
+
+ggplot(SELE_dat, aes(SELE, PECAM1, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(SELE, CD34, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(SELE, VCAM1, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(SELE, CHI3L1, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(CD34, PECAM1, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+
+
+
+sele_pecam_cor_out <- NULL
+for (cur_tiss in unique(SELE_dat$tissue)) {
+    tiss_ind = SELE_dat$tissue %in% cur_tiss
+    if (sum(is.na(SELE_dat[tiss_ind, "SELE"])) >0) {
+        next()
+    }
+    res_out <- cor.test(SELE_dat[tiss_ind, "SELE"], SELE_dat[tiss_ind, "PECAM1"])
+    res_tidy <- cbind(cur_tiss, broom::tidy(res_out))
+    sele_pecam_cor_out <- rbind(sele_pecam_cor_out, res_tidy)
+}
+
+
+sele_cd34_cor_out <- NULL
+for (cur_tiss in unique(SELE_dat$tissue)) {
+    tiss_ind = SELE_dat$tissue %in% cur_tiss
+    if (sum(is.na(SELE_dat[tiss_ind, "SELE"])) >0) {
+        next()
+    }
+    res_out <- cor.test(SELE_dat[tiss_ind, "SELE"], SELE_dat[tiss_ind, "CD34"])
+    res_tidy <- cbind(cur_tiss, broom::tidy(res_out))
+    sele_cd34_cor_out <- rbind(sele_cd34_cor_out, res_tidy)
+}
+
+sele_VCAM1_cor_out <- NULL
+for (cur_tiss in unique(SELE_dat$tissue)) {
+    tiss_ind = SELE_dat$tissue %in% cur_tiss
+    if (sum(is.na(SELE_dat[tiss_ind, "SELE"])) >0) {
+        next()
+    }
+    res_out <- cor.test(SELE_dat[tiss_ind, "SELE"], SELE_dat[tiss_ind, "VCAM1"])
+    res_tidy <- cbind(cur_tiss, broom::tidy(res_out))
+    sele_VCAM1_cor_out <- rbind(sele_VCAM1_cor_out, res_tidy)
+}
+
+SELE_dat <- mutate(SELE_dat,
+                   DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)))
+
+putamen_dat <- SELE_dat %>%
+    filter(tissue == "brain_spinal_cord__cervical_c_1")
+
+ggplot(putamen_dat,aes(MHBRNPH, SELE, color = factor(DTHHRDY))) +
+    geom_point()
+ggplot(putamen_dat,aes(factor(DTHHRDY), SELE)) +
+    ggforce::geom_sina()
+```
+Try some linear mixed models
+```{r}
+model_1 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH + AGE + SEX + (1|tissue) + (1|SUBJID), data = SELE_dat)
+
+model_2 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH + AGE + SEX + PECAM1 + (1|tissue) + (1|SUBJID), data = SELE_dat)
+
+model_3 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH * PECAM1 + AGE + SEX  + (1|tissue) + (1|SUBJID), data = SELE_dat)
+
+model_4 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX + PECAM1 + AGE * tissue + (1|SUBJID), data = SELE_dat)
+
+model_5 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX  + AGE * tissue * PECAM1 + (1|SUBJID), data = SELE_dat)
+
+summary(model_1)
+
+summary(model_2)
+
+summary(model_3)
+
+summary(model_4)
+
+summary(model_5)
+
+anova(model_1, model_2)
+## Include PECAM
+anova(model_2, model_3)
+## THe interaction factor makes the model worse
+anova(model_2, model_4)
+## Making tissue a factor and making it interact with age makes the model better
+anova(model_4, model_5)
+## Making tissue also interact with PECAM also improves the value of the tissue
+
+SELE_dat %>%
+    filter(tissue == "adipose_subcutaneous") %>%
+    ggplot(., aes(AGE, SELE)) +
+    geom_point() +
+    geom_smooth(method = "lm")
+
+SELE_dat %>%
+    ggplot(., aes(AGE, SELE, color = tissue)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    theme(legend.position = "none")
+
+SELE_dat %>%
+    filter(tissue == "adipose_subcutaneous") %>%
+    ggplot(., aes(factor(MHPSBLDCLT), SELE)) +
+    ggforce::geom_sina()
+
+
+```
+Sele correlation plot
+```{r}
+SELE_cor <- SELE_dat %>%
+    filter(!(tissue %in% c("spleen", "whole_blood"))) %>%
+    select(SUBJID, SELE, tissue) %>%
+    pivot_wider(names_from = tissue, values_from = SELE) %>%
+    column_to_rownames("SUBJID") %>%
+    cor(., use = "pairwise.complete.obs")
+breaksList = seq(-1,1,by=.01)
+pheatmap(SELE_cor,
+          breaks = breaksList,
+                        color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdYlBu")))(length(breaksList)))
+
+```
+
+Across tissue correlation distribution
+```{r}
+# n_sample_genes <- 1
+# n_boostraps <- 100
+# all_genes <- unique(unlist(cluster_list))
+# distribution_table <- NULL
+# for (cur_ind in seq(n_boostraps)) {
+#     rand_names <- sample(all_genes, n_sample_genes)
+#     
+#     ## Get the Genes
+#     rand_genes <- GenesFromTissues(genes_of_int = rand_names, key_dat = key_dat,
+#                      vst_location = "../../Setup Code/output/",
+#                      run_all_available = T)
+#     
+#     
+#     rand_genes$zscore <- NewZScoreMaker(rand_genes)
+#     
+#     ## Try to make a correlation matrix
+#     pre_cor_mat <- select(rand_genes, SUBJID, zscore, tissue) %>%
+#         pivot_wider(names_from = tissue, values_from = zscore) %>%
+#         column_to_rownames(var = "SUBJID")
+#     
+#     cor_mat <- cor(pre_cor_mat, use = "pairwise.complete.obs")
+#     
+# 
+# }
+```
+
+Top and bottom SELE
+```{r}
+SELE_dat %>%
+    filter(tissue == "lung") %>%
+    ggplot(., aes(PECAM1, SELE)) +
+    geom_point()
+```
+
