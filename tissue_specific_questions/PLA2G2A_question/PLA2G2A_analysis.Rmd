@@ -9,6 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(DESeq2)
 library(tidyverse)
+library(lme4)
+library(lmerTest)
 source("../../global_in/general_scripts.R")
 ```
 
@@ -97,5 +99,51 @@ for (cur_plot in plot_list) {
  print(cur_plot)   
 }
 dev.off()
+```
+
+I want to see what I can understand about PLA2G2A in the context of other variable. It does not show up as a sig finding in a controlled linear model in any tissue [https://www.nature.com/articles/s41467-017-02772-x#MOESM1] and so I am going to try to see if I can understand it in the context of varaibles controlled for
+
+Load in data
+```{r}
+all_plag2_expression <- GenesFromTissues(genes_of_int =  "PLA2G2A",key_dat = key_dat,run_all_available = T,vst_location = "../../Setup Code/output/")
+
+all_plag2_expression_join <- left_join(all_plag2_expression, samp_dat) %>%
+    left_join(., phen_dat)
+
+adipose_sub_plag <- all_plag2_expression_join %>%
+    filter(tissue == "adipose_subcutaneous")
+```
+
+Simply look at ADPSBQ plag2a2 ~ simple model and then ~ complex model
+```{r}
+broom::tidy(lm(PLA2G2A ~ SMTSISCH, data = adipose_sub_plag))
+
+## Lacking:
+## SMCAT: Category or classifier of a set of responses, indicates the color of the sample collection kit
+## SMTSTPTREF Time point reference for Start and End times of sample procurement
+all_out <- broom::tidy(lm(PLA2G2A ~ SMTSISCH + AGE + HGHT+ WGHT + BMI + ETHNCTY + SEX + MHCANCERNM +SMRIN +SMATSSCR  +SMCENTER  + SMNABTCH + COHORT, data = adipose_sub_plag))
+all_out
+## Ischemic is still one of the bigger results
+```
+
+
+```{r}
+lmer_res <- lmer(PLA2G2A ~ SMTSISCH + AGE + HGHT+ WGHT + BMI + ETHNCTY + SEX + MHCANCERNM +SMRIN +SMATSSCR  +SMCENTER  + SMNABTCH + COHORT + (1|tissue), data = all_plag2_expression_join)
+
+summary(lmer_res)
+
+## No vent
+no_vent_dat <- all_plag2_expression_join %>%
+    filter(DTHVNT == 0)
+vent_dat <- all_plag2_expression_join %>%
+    filter(DTHVNT == 1)
+
+lmer_no_vent <- lmer(PLA2G2A ~ SMTSISCH + AGE + HGHT+ WGHT + BMI + ETHNCTY + SEX + MHCANCERNM +SMRIN +SMATSSCR  +SMCENTER  + SMNABTCH + COHORT + (1|tissue), data = no_vent_dat)
+
+summary(lmer_no_vent)
+
+lmer_vent <- lmer(PLA2G2A ~ SMTSISCH + AGE + HGHT+ WGHT + BMI + ETHNCTY + SEX + MHCANCERNM +SMRIN +SMATSSCR  +SMCENTER  + SMNABTCH + COHORT + (1|tissue), data = vent_dat)
+
+summary(lmer_no_vent)
 ```
 
