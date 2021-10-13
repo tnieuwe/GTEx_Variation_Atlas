@@ -46,7 +46,7 @@ sele_vs_chi <- manual_curation_test %>%
 ```
 See what SELE does across tissues
 ```{r}
-SELE_dat <- GenesFromTissues(genes_of_int = c("SELE", "CD34", "PECAM1", "VCAM1", "CHI3L1"),
+SELE_dat <- GenesFromTissues(genes_of_int = c("SELE", "CD34", "PECAM1", "VCAM1", "CHI3L1", "VWF", "IL6"),
                  key_dat = key_dat,vst_location = "../../Setup Code/output/",
                  run_all_available = T) %>%
     left_join(., phen_dat) %>%
@@ -70,6 +70,18 @@ ggplot(SELE_dat, aes(SELE, CHI3L1, color = tissue)) +
     theme(legend.position = "bottom")
 
 ggplot(SELE_dat, aes(CD34, PECAM1, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(SELE, VWF, color = tissue)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(PECAM1, VWF, color = IL6)) +
+    geom_point() +
+    theme(legend.position = "bottom")
+
+ggplot(SELE_dat, aes(IL6, SELE, color = as.factor(MHHTN))) +
     geom_point() +
     theme(legend.position = "bottom")
 
@@ -133,6 +145,10 @@ model_4 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX + PECAM1 + AGE * tissue 
 
 model_5 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX  + AGE * tissue * PECAM1 + (1|SUBJID), data = SELE_dat)
 
+model_6 <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX  + AGE:tissue + tissue:PECAM1 + PECAM1 + tissue + AGE + (1|SUBJID), data = SELE_dat)
+
+model_6_no_int <- lmer(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX  + AGE:tissue + tissue:PECAM1 + PECAM1 + tissue + AGE + (1|SUBJID) -1 , data = SELE_dat)
+
 summary(model_1)
 
 summary(model_2)
@@ -143,6 +159,9 @@ summary(model_4)
 
 summary(model_5)
 
+summary(model_6)
+
+summary(model_6_no_int)
 anova(model_1, model_2)
 ## Include PECAM
 anova(model_2, model_3)
@@ -151,6 +170,12 @@ anova(model_2, model_4)
 ## Making tissue a factor and making it interact with age makes the model better
 anova(model_4, model_5)
 ## Making tissue also interact with PECAM also improves the value of the tissue
+anova(model_5, model_6)
+## I think I will stick with model 6 as it outperforms model 5
+## in AIC and BIC with only a minimal increase in reduction of
+## variance
+
+current_model_summary <- summary(model_6)
 
 SELE_dat %>%
     filter(tissue == "adipose_subcutaneous") %>%
@@ -165,12 +190,63 @@ SELE_dat %>%
     theme(legend.position = "none")
 
 SELE_dat %>%
+    ggplot(., aes(PECAM1, SELE, color = tissue)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    theme(legend.position = "none")
+
+SELE_dat %>%
     filter(tissue == "adipose_subcutaneous") %>%
     ggplot(., aes(factor(MHPSBLDCLT), SELE)) +
     ggforce::geom_sina()
 
 
 ```
+
+See if correlations between tissues and PECAM
+```{r}
+p_val_ind <- (current_model_summary$coefficients[,"Pr(>|t|)"]) < 0.05
+sig_coefficients <- current_model_summary$coefficients[p_val_ind,]
+
+```
+New idea make a model for each tissue and see where age or PECAM1 is sig and in which direction.
+```{r}
+
+lm_outs <- NULL
+summary_out <- list()
+for (cur_tiss in unique(SELE_dat$tissue)) {
+    cur_dat <- filter(SELE_dat, tissue == cur_tiss)
+    if (sum(is.na(cur_dat$SELE)) > 1) {
+        next()
+    }
+    cur_model <- lm(SELE ~ DTHHRDY_factor + SMTSISCH  + SEX + VWF + AGE,
+       data = cur_dat)
+    cur_summ <- summary(cur_model)
+    summary_out[[cur_tiss]] <- cur_summ
+    ## Get a row that says if something either positively or negatively correlated
+    sig_ind <- cur_summ$coefficients[,"Pr(>|t|)"] < 0.05
+    direction_estimate <- ifelse(cur_summ$coefficients[,"Estimate"] >= 0,
+                                 "pos_corr", "neg_corr")
+    to_be_row <- rep("not_sig", length(sig_ind))
+    names(to_be_row) <- names(sig_ind)
+    to_be_row[sig_ind] <- direction_estimate[sig_ind]
+    sig_row <- as.data.frame(t(as.data.frame(to_be_row)))
+    sig_prebind <- cbind(cur_tiss, sig_row)
+    
+    
+    ## Sex tissues
+    if (length(unique(cur_dat$SEX))== 1) {
+        sig_prebind <- mutate(sig_prebind, SEX = NA) %>%
+            select(colnames(lm_outs))
+    }
+    lm_outs <- rbind(lm_outs, sig_prebind)
+}
+
+
+```
+
+
+
 Sele correlation plot
 ```{r}
 SELE_cor <- SELE_dat %>%
