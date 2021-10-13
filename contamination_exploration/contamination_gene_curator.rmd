@@ -47,8 +47,9 @@ rownames(numeric_tpm) <- tpm_compressed$gene_id
 ## test on PRSS1
 sum(as.vector(numeric_tpm[tpm_compressed$Description == "PRSS1",]) > 1000)
 
-## Maybe add a mean filter to avoid situations like JCHAIN
-unique_gene_index <- apply(numeric_tpm, 1, function(x){
+
+
+ContaminationFilter <- function(x){
     ind_1000 = x>1000
     median_value = median(x)
     no_max_x <- x[!ind_1000]
@@ -57,7 +58,10 @@ unique_gene_index <- apply(numeric_tpm, 1, function(x){
     ## AND the median value of all tissues should be less than 10 tpm
     ## AND the mean of the non-high expression values must be less than 50 tpm
     (sum(ind_1000) >= 1 & sum(ind_1000) <= 2) & (median_value < 10 & mean(no_max_x) < 50)
-})
+}
+
+## Maybe add a mean filter to avoid situations like JCHAIN
+unique_gene_index <- apply(numeric_tpm, 1, ContaminationFilter)
 
 cur_unique_genes <- tpm_compressed$Description[unique_gene_index]
 
@@ -86,6 +90,35 @@ reg1a <- unlist(drop_df)
   (sum(reg1a>1000) >= 1 | sum(reg1a>1000) <= 2) & median(x) < 10
 ```
 
+Create function to test gene performance
+```{r}
+genes <- c("CRISP3", "TCN1", "TFF2"  )
+tpm_df <- tpm_compressed
+filter_function <- ContaminationFilter
+ContaminationFilterPerformance <- function(genes, tpm_df){
+    gene_ind <- tpm_df$Description %in% genes
+    cur_df <- tpm_df[gene_ind, -1:-2]
+    rownames(cur_df) <- tpm_df$Description[gene_ind]
+    count_index <- apply(cur_df, 1, function(x){})
+    filter_high_count = apply(cur_df, 1, function(x){
+        count_index <- x>1000
+        sum(count_index) >= 1 & sum(count_index) <= 2
+    })
+    median_filter = apply(cur_df, 1, function(x){median(x) < 10})
+    mean_filter = apply(cur_df, 1, function(x){
+        count_index <- x>1000
+        mean(x[!count_index]) < 50})
+    ## Logic explanation
+    ## The total number of tissues with high values must be between 1 and 2
+    ## AND the median value of all tissues should be less than 10 tpm
+    ## AND the mean of the non-high expression values must be less than 50 tpm
+    (sum(ind_1000) >= 1 & sum(ind_1000) <= 2) & (median_value < 10 & mean(no_max_x) < 50)
+    
+}
+
+```
+
+
 Calculate percent contamination for each gene
 ```{r}
 ## Use key table to make results usable with manual curation labels
@@ -96,7 +129,23 @@ man_cur <- read.csv("../manual_cluster_analysis/manual_curation.csv")
 man_cur <- man_cur %>% mutate(total_genes = str_count(genes,";") + 1)
 
 man_cur <- man_cur %>% left_join(results) %>%
-    mutate(prop_contam = n_intersect/total_genes)
+    mutate(prop_contam = round(n_intersect/total_genes,digits = 3)) %>%
+    rename(contamination_genes = "found_genes") %>%
+    mutate(contamination_genes = gsub("; ", ";", contamination_genes),
+           probable_cluster = case_when(
+               prop_contam >= .8 & grepl("PRSS1|REG1A|KRT13|PNLIP|CPA1|GP2",
+                                       genes) &
+                                           !str_detect(label, "X") ~
+                                           "classic_contamination",
+               prop_contam >= .8 & grepl("ACTA1|KRT2|KRT1|MYL2|MYH7|CKM",
+                                       genes) &
+                                           !str_detect(label, "X") ~
+                                           "new_contamination",
+           TRUE ~ probable_cluster)
+           ) %>%
+    select(-total_genes)
+write.csv(man_cur, "../manual_cluster_analysis/manual_curation.csv",
+   row.names = F)
 
 ```
 
