@@ -12,6 +12,7 @@ GTEx_SAMPID_to_SUBJID <- function(sampids){
 
 ZscoreProfilePuller <- function(r_name_vect, location){
     ### This function is used to pull Z-score of different tissues easily
+    require(dplyr)
     profile_list <- list()
     for (tiss in r_name_vect) {
         cur_frame <- read.csv(paste0(location,
@@ -103,7 +104,7 @@ ClusterGeneOverlaps <- function(genes_of_int,
       overlapping_genes <- intersect(cur_cluster, genes_of_int)
       n_of_overlap <- length(overlapping_genes)
       ## Naming
-      rownames(res_mat)[overall_ind] = paste(tiss_name, clust_name,sep = "_")
+      rownames(res_mat)[overall_ind] = paste(tiss_name, clust_name,sep = "-")
       res_mat[overall_ind, 1] = n_of_overlap
       if (length(overlapping_genes) == 0) {
         overlapping_genes = ""
@@ -314,4 +315,45 @@ CorrectionPlotter <- function(df, y_axis, corrected_by, x_axis, plot_type = NA){
   dat_out[["plot"]] <- plot_out
   dat_out[["model"]] <- new_model
   return(dat_out)
+}
+
+NewZScoreMaker <- function(gene_from_tissue_long_out){
+  ## This function creates Z-scores based on the genes created from the long
+  ## version of GenesFromTissue
+  numeric_ind <- sapply(gene_from_tissue_long_out, is.numeric)
+  zscores = rep(NA, nrow(gene_from_tissue_long_out))
+  for (cur_tiss in unique(gene_from_tissue_long_out$tissue)) {
+    tiss_ind <- gene_from_tissue_long_out$tissue %in% cur_tiss
+    numeric_matrix <- gene_from_tissue_long_out[tiss_ind,numeric_ind]
+    centered_matrix <- sweep(numeric_matrix, colMeans(numeric_matrix), MARGIN = 2)
+    zscore_matrix <- sweep(centered_matrix,
+                           apply(numeric_matrix, 2, sd),
+                           FUN = "/",
+                           MARGIN = 2)
+    zscores[tiss_ind] <- apply(zscore_matrix, 1, sum, na.rm =T)/ncol(zscore_matrix)
+  }
+  return(zscores)    
+  
+}
+
+ClusterCombinerGenes <- function(tissue, cluster_vect,
+                            cluster_list, for_R = FALSE){
+  combined_clusters <- unlist(cluster_list[[tissue]][cluster_vect])
+  if (for_R == TRUE) {
+    return(combined_clusters)
+  }
+  cat(combined_clusters,sep = "\n")
+}
+
+ClusterCombinerZscores <- function(tissue, cluster_vect,
+                                   profile_list, cor_matrix = FALSE){
+  all_profiles <- profile_list[[tissue]]
+  relevant_profiles <- all_profiles[,cluster_vect]
+  row_sums <- rowSums(relevant_profiles)
+  new_zscore <- row_sums/length(cluster_vect)
+  if (cor_matrix == FALSE) {
+    return(new_zscore)
+  }
+  cor_mat <- cor(relevant_profiles)
+  return(cor_mat)
 }
