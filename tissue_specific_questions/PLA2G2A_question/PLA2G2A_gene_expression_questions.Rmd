@@ -15,8 +15,8 @@ source("../../global_in/general_scripts.R")
 Select items of interest
 ```{r}
 ## Tissue R name
-tiss <- c("liver")
-genes <- c("PLA2G2A", "KNDC1", "SAA1")
+tiss <- c("liver", "adipose_visceral__omentum", "skin_not_sun_exposed__suprapubic")
+genes <- c("PLA2G2A", "SAA1", "CXCL8", "TNF", "SELP", "IL6", "ICAM", "CRP")
 ```
 
 load in data
@@ -66,7 +66,8 @@ for (tiss_ind in seq_along(tiss)) {
         final_gene_dat <- gene_dat
         next
         }
-    final_gene_dat <- rbind(final_gene_dat, gene_dat)
+    final_gene_dat <- bind_rows(final_gene_dat, gene_dat) %>%
+        select(everything(), tissue)
     } else{
         colnames(gene_dat) <-final_gtab$gene_name
         gene_dat <- rownames_to_column(as.data.frame(gene_dat), var = "SAMPID")
@@ -74,7 +75,11 @@ for (tiss_ind in seq_along(tiss)) {
     }
 
 }
-gene_dat <- final_gene_dat %>% rownames_to_column(var = "SAMPID") %>%
+
+if (!("SAMPID" %in% colnames(final_gene_dat))) {
+    final_gene_dat <- final_gene_dat %>% rownames_to_column(var = "SAMPID")
+}
+gene_dat <- final_gene_dat  %>%
     mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID))
 
 ```
@@ -92,13 +97,21 @@ gene_dat <- left_join(gene_dat, samp_dat, by = "SAMPID")
 
 ```
 Answer questions below
+
 ```{r}
 ggplot(gene_dat, aes(x= AGE, y =PLA2G2A)) +
     geom_point() 
 
 
-ggplot(gene_dat, aes(x= , y =KNDC1)) +
-    geom_violin() 
+ggplot(gene_dat, aes(x= PLA2G2A, y =TNF, color = tissue)) +
+    geom_point() 
+
+filter(gene_dat, tissue=="skin_not_sun_exposed__suprapubic") %>%
+    ggplot(aes(x= PLA2G2A, y =IL6)) +
+    geom_point()
+
+
+
 
 plots <- list()
 for (tiss_ind in seq_along(unique(gene_dat$tissue))) {
