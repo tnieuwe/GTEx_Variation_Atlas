@@ -1,0 +1,48 @@
+---
+title: "Hypothalamus overlap analysis"
+author: "Tim N"
+date: "10/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+libraries
+```{r}
+library(tidyverse)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+```
+Read in ovary excel sheet
+```{r}
+all_marker_genes <- readxl::read_excel("data_in/41467_2020_14936_MOESM2_ESM.xlsx",
+                   sheet = 2,skip = 2)
+
+all_marker_genes <- filter(all_marker_genes,p_val_adj < 0.05)
+marker_gene_table <- table(all_marker_genes$gene)
+unique_markers <- names(marker_gene_table)[marker_gene_table == 1]
+all_marker_genes <- filter(all_marker_genes, gene %in% unique_markers)
+```
+Load in clusters
+```{r}
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = F)
+ovary_dat <- cluster_list$ovary
+```
+
+Calculate overlaps
+```{r}
+all_marker_genes <- mutate(all_marker_genes, cluster_factor = factor(cluster))
+dat_out <- NULL
+for (cluster_ind in seq_along(ovary_dat)) {
+    cur_genes <- ovary_dat[[cluster_ind]]
+    temp_dat <- filter(all_marker_genes, gene %in% cur_genes)
+    new_row <-t(cbind(table(temp_dat$cluster_factor))) %>%
+        as.data.frame() %>%
+        cbind(.,paste0(cur_genes,collapse = ";"))
+    rownames(new_row) <- names(ovary_dat)[cluster_ind]
+    dat_out <- rbind(dat_out,new_row)
+}
+```
