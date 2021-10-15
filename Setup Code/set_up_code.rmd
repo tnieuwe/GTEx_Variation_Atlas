@@ -69,7 +69,8 @@ load("output/gtex-gene-counts-v8.rda")
                 # "nerve_tibial",
 #                   "liver",
                 #   "heart_atrial_appendage",
-#                   "spleen")
+#                   "spleen",
+                #   "pancreas")
 # tissue_names = c("Lung",
 #                  "Artery - Coronary",
 #                  "Kidney - Cortex",
@@ -90,11 +91,12 @@ load("output/gtex-gene-counts-v8.rda")
                  # "Nerve - Tibial"
                 # "Liver",
                 # "Heart - Atrial Appendage"
-                # "Spleen")
+                # "Spleen",
+                # "Pancreas")
 
 
-tissue_list = c("spleen")
-tissue_names = c("Spleen")
+tissue_list = c("pancreas")
+tissue_names = c("Pancreas")
 
 for (j in seq(length(tissue_list))) {
     cur_tiss <- tissue_list[j]
