@@ -1,0 +1,136 @@
+---
+title: "pancreas_cluster_combining"
+author: "Tim N"
+date: "10/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = F)
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+
+```
+
+
+```{r}
+
+pancreas_profile <- ZscoreProfilePuller("pancreas", "../../MARCC output/variance_profiles_kendall/")
+## Get a correlation matrix of esophagus clusters
+all_cor_mat <- ClusterCombinerZscores("pancreas",
+                       cluster_vect = colnames(pancreas_profile$pancreas)[-1:-2],
+                       pancreas_profile,cor_matrix = T)
+## Cluster and plot these results to get a clear understanding of esophagus
+## relationships
+dendo <- hclust(dist(1-abs(all_cor_mat)))
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = FALSE)
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = dendo)
+```
+mega_cluster 1 "K.1", "G.1", "C.2"
+"K.2", "G.2", C.1"
+```{r}
+## This is literally just ischemia
+mega_cluster_1 <- c("K.1", "G.1", "C.2")
+ClusterCombinerZscores("pancreas",
+   cluster_vect = mega_cluster_1,
+   pancreas_profile,cor_matrix = T)
+
+# ClusterCombinerGenes(tissue = "pancreas",cluster_vect = mega_cluster_1,cluster_list = cluster_list,for_R = F)
+
+
+```
+
+
+```{r}
+mega_cluster_2 <- c("K.2", "G.2", "C.1")
+ClusterCombinerZscores("pancreas",
+   cluster_vect = mega_cluster_2,
+   pancreas_profile,cor_matrix = T)
+
+# ClusterCombinerGenes(tissue = "pancreas",cluster_vect = mega_cluster_1,cluster_list = cluster_list,for_R = F)
+
+```
+
+```{r}
+joined_panc <- left_join(pancreas_profile$pancreas, phen_dat) %>%
+    left_join(., samp_dat) %>%
+    mutate(diabetes = case_when(
+        MHT1D == 1 ~ "type_I",
+        MHT2D == 1 ~ "type_II",
+        TRUE ~ "none"
+    ),
+    diabetes = factor(diabetes, c("none", "type_II", "type_I")))
+
+ggplot(joined_panc, aes(diabetes, A)) +
+    ggforce::geom_sina() +
+    theme_classic()
+
+diabetic_model <- lm(A ~ diabetes + AGE + SEX + TRISCHD, data = joined_panc)
+summary(diabetic_model)
+
+```
+## Test if cluster A would reach variability threshold without diabetics
+
+Step one make a new file of the pancreas data after removing diabetics
+```{r}
+NDs_only <- filter(joined_panc, diabetes == "none")
+
+
+load("../../Setup Code/output/pancreas-vsd-mean-filtered.rda")
+diab_ind <- (colnames(generalVSDMeanFiltered) %in% NDs_only$SAMPID)
+pancreasVSDMeanFiltered <- generalVSDMeanFiltered[,diab_ind]
+save(generalVSDMeanFiltered,gtab, gtabMeanFiltered,
+     file = "data_in/pancreas-vsd-mean-filtered.rda")
+
+```
+
+Run the pipeline again
+```{r}
+source("../../global_in/pipeline_specific_functions/mccall_analysis_corr_step.R")
+source("../../global_in/pipeline_specific_functions/mccall_cluster_generator.R")
+require(SuppDists)
+pipeline_dat <- mccall_analysis_corr_step("pancreas",
+                                     path_to_files = "data_in/",
+                                     variance_type = "quantile",
+                                     variance_value = .98,
+                                     correlation = "kendall",
+                                     MARCC = TRUE)
+pipeline_dat <- mccall_cluster_generator(pipeline_dat,
+                                         cluster_breaker = TRUE,
+                                         sub_clust_cut_off = .8,
+                                         agglo_cut_off = .75)
+```
+
+Find if any genes now overlap
+```{r}
+ND_clusters <- pipeline_dat$anno_df %>% rownames_to_column(var = "genes")
+print("All genes from cluster A")
+cluster_list$pancreas$A
+print("Genes left after removing diabetics")
+cluster_list$pancreas$A[cluster_list$pancreas$A %in% ND_clusters$genes]
+print("Diabtic dependent genes")
+cluster_list$pancreas$A[!(cluster_list$pancreas$A %in% ND_clusters$genes)]
+
+## GLucagon still there?
+filter(ND_clusters, genes == "GCG")
+
+## Glucagon is variable but not in a cluster
+
+## Do the INS leftover genes join a new cluster?
+filter(ND_clusters,
+       genes %in%cluster_list$pancreas$A[cluster_list$pancreas$A %in% ND_clusters$genes])
+
+## Nope
+```
+
+
+```{r}
+```
+
