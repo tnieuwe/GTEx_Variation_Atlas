@@ -473,7 +473,8 @@ all_hba1 <- GenesFromTissues(genes_of_int = "HBA1", key_dat = key_dat,
                  vst_location = "../../Setup Code/output/",
                  run_all_available = T)
 ## Pull phen data
-phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
+    mutate(TRVNTSR_edit = ifelse(TRVNTSR == "", "On Vent >25 hours", TRVNTSR))
 cur_phen <- phen_dat %>% select(SUBJID, DTHHRDY, TRISCHD) %>%
     ## change hardy scale
     mutate(DTHHRDY_linear = ifelse(DTHHRDY == 0, 5, DTHHRDY),
@@ -663,6 +664,7 @@ model_blood_m2_no_5 <- (lm(blood_zscore ~ HBA1 + TRISCHD, data = fat_blood_no_5)
 
 model_skin_m3_no_5 <- (lm(skin_zscore ~ TRISCHD, data = fat_skin_no_5))
 model_skin_m4_no_5 <- (lm(skin_zscore ~ HBA1 + TRISCHD, data = fat_skin_no_5))
+model_skin_m4_no_5_interact <- (lm(skin_zscore ~ HBA1 * TRISCHD, data = fat_skin_no_5))
 
 
 ## Print out matt requested
@@ -683,7 +685,7 @@ fat_skin_no_5 %>%
 ```
 Test if blood is associated with anything else.
 ```{r}
-random_tissues <- c("brain_putamen__basal_ganglia", "liver", "nerve_tibial", "adrenal_gland")
+random_tissues <- c("brain_putamen__basal_ganglia", "liver", "nerve_tibial", "breast_mammary_tissue")
 
 
 test_hba1_cor <- left_join(across_tissue_skin, all_hba1) %>%
@@ -731,7 +733,7 @@ ggplot(phen_dat, aes(log10(DTHVNTD))) +
     geom_histogram()
 
 
-ggplot(phen_dat, aes(DTHVNTD, TRISCHD, color = (DTHRFGD))) +
+ggplot(phen_dat, aes(DTHVNTD, TRISCHD, color = factor(DTHVNT))) +
     geom_point() +
     labs(title = "Time on Vent Compared to Ischemic Time",
          x = "Log10 Hours on Ventillator",
@@ -742,6 +744,120 @@ ggplot(phen_dat, aes(DTHVNTD, TRISCHD, color = (DTHRFGD))) +
     )
 
 ```
+
+
+Split above vent data into three groups, less than 24 hr on a vent and ischemic > 50,
+ischemic <500, ischemic > 500 hours on vent >24
+```{r}
+vent_phen <- phen_dat %>%
+    filter(DTHVNT == 1) %>%
+    mutate(vent_group = case_when(
+        DTHVNTD >= 24 & TRISCHD > 500 ~ "group_2",
+        DTHVNTD <24 & TRISCHD > 500 ~ "group_1",
+        TRUE ~ "group_3"
+    )) %>%
+    filter(!(TRVNTSR_edit == "On ventilator < 24 hours" & vent_group == "group_2"))
+
+
+ggplot(vent_phen, aes(DTHVNTD, TRISCHD, color = factor(vent_group))) +
+    geom_point() +
+    labs(title = "Time on Vent Compared to Ischemic Time",
+         x = "Log10 Hours on Ventillator",
+         y = "Ischemic Time") +
+    scale_x_continuous(
+        trans = "log10",
+        breaks = c(.5, 1, 5, 10, 24, 100, 300, 1000, 10000)
+    )
+
+table(vent_phen$vent_group)
+
+vent_phen %>% filter(SUBJID %in% fat_blood$SUBJID) %>%
+    dplyr::count(vent_group)
+
+vent_adi_blood <- vent_phen %>% select(SUBJID, vent_group) %>%
+    left_join(., fat_blood)
+
+ggplot(vent_adi_blood, aes(TRISCHD, blood_zscore, color = vent_group)) +
+    geom_point()
+
+ggplot(vent_adi_blood, aes(TRISCHD, HBA1, color = vent_group)) +
+    geom_point()
+
+vent_adi_skin <- vent_phen %>% select(SUBJID, vent_group) %>%
+    left_join(., fat_skin)
+
+ggplot(vent_adi_skin, aes(TRISCHD, skin_zscore, color = vent_group)) +
+    geom_point()
+
+ggplot(vent_adi_skin, aes(HBA1, skin_zscore, color = vent_group)) +
+    geom_point()
+
+
+vent_adi_join <- left_join(vent_adi_skin, vent_adi_blood)
+
+ggplot(vent_adi_join, aes(blood_zscore, skin_zscore, color = vent_group)) +
+    geom_point()
+```
+
+Blood skin plot randomizer
+```{r}
+random_tiss <- sample(unique(bound_skin$tissue), 1)
+random_skin <- filter(bound_skin, tissue == random_tiss)
+random_blood <- filter(bound_blood, tissue == random_tiss)
+
+random_tiss
+vent_rand_skin <- vent_phen %>% select(SUBJID, vent_group) %>%
+    left_join(., random_skin)
+
+vent_rand_blood <- vent_phen %>% select(SUBJID, vent_group) %>%
+    left_join(., random_blood)
+
+ggplot(random_blood, aes(TRISCHD, blood_zscore, color = DTHHRDY_factor)) + geom_point() +
+    labs(title = random_tiss)
+
+ggplot(random_skin, aes(TRISCHD, skin_zscore, color = DTHHRDY_factor)) + geom_point() +
+    labs(title = random_tiss)
+
+
+bound_blood$DTHVNT <- bound_blood$DTHHRDY_linear == 5
+bound_skin$DTHVNT <- bound_skin$DTHHRDY_linear == 5
+
+each_tiss_lm
+
+pdf(file = "data_out/blood_vs_skin_zscore_vent.pdf", height = 10, width = 12)
+for (random_tiss in unique(bound_skin$tissue)) {
+    
+    random_skin <- filter(bound_skin, tissue == random_tiss,
+                           !is.na(DTHVNT))
+    
+    random_blood <- filter(bound_blood, tissue == random_tiss,
+                           !is.na(DTHVNT))
+    
+    lm(skin_zscore ~ TRISCHD * DTHVNT, data = random_skin)
+    
+    blood_plot <- ggplot(random_blood, aes(TRISCHD, blood_zscore)) +
+        geom_point(aes( color = DTHVNT)) +
+    labs(title = random_tiss,
+         subtitle = paste0("Vent vs Non-Vent\n Blood wilcoxon p-val: ",
+                           format.pval(blood_wilcox$p.value),
+                           "; Skin wilcoxon p-val: ",
+                           format.pval(skin_wilcox$p.value))) +
+        theme_classic() +
+        theme(legend.position = "none") +
+        geom_smooth(aes(color = DTHVNT),method = "lm")
+
+    skin_plot <- ggplot(random_skin, aes(TRISCHD, skin_zscore)) +
+        geom_point(aes( color = DTHVNT)) +
+        theme_classic() +
+        theme(legend.position = "top") +
+        geom_smooth(aes(color = DTHVNT),method = "lm")
+    
+    joined_plots <- blood_plot / skin_plot
+    print(joined_plots)
+}
+dev.off()
+```
+
 
 Include vent time as factor 
 ```{r}
@@ -766,6 +882,59 @@ summary(model_skin_m4_5_plus)$coefficients
 
 ```
 
+Test if the two zscores (blood ischemic and general ischemic) are related to one another at least in fat.
+```{r}
+fat_all <- left_join(fat_blood, fat_skin)
+ggplot(fat_all, aes(blood_zscore, skin_zscore)) + geom_point()
+
+z_compare_model <- lm(blood_zscore ~ skin_zscore * TRISCHD, data = fat_all)
+summary(z_compare_model)
+## Make fake preddiction dataset
+interactions::interact_plot(model = z_compare_model,pred = TRISCHD,modx =  skin_zscore )
+
+```
+
+Test if multiple tissues have signficiant associations between HBA1 and the skin cluster. We saw this in adipose subcut and want to know if this is tissue specific or a global phenomenon.
+```{r}
+
+hba1_skin_results <- NULL
+hba1_skin_vector <- c()
+plt_list <- list()
+for (cur_tiss in unique(skin_blood_bound$tissue)) {
+    temp_df <- filter(skin_blood_bound, tissue == cur_tiss,
+                      DTHHRDY_linear != 5)
+    if (unique(is.na(temp_df$HBA1)) == TRUE) {
+        next()
+    }
+    temp_model <- lm(skin_zscore ~ TRISCHD + HBA1, data = temp_df)
+    new_rows <- cbind(broom::tidy(summary(temp_model)), cur_tiss)
+    hba_pval <- filter(new_rows, term == "HBA1")$p.value
+    cur_res <- hba_pval  < .05
+    names(cur_res) <- cur_tiss
+    hba1_skin_vector <- append(hba1_skin_vector, cur_res)
+    hba1_skin_results <- rbind(hba1_skin_results, new_rows)
+    plot_model <- lm(skin_zscore ~ TRISCHD, data = temp_df)
+    temp_df$corrected_skin_zscores <- plot_model$residuals
+    plt <- ggplot(temp_df, aes(corrected_skin_zscores, HBA1)) +
+        geom_point() +
+        labs(title = cur_tiss,
+             subtitle = paste0("pval: ", format.pval(hba_pval)))
+    plt_list[[cur_tiss]] <- plt
+    
+}
+
+pdf("data_out/corrected_skin_zscores_compared_to_HBA1.pdf",width =  10, height = 8)
+for (plt in plt_list) {
+    print(plt)
+}
+dev.off()
+write.csv(hba1_skin_results, "data_out/skin_hardyno5_hba1_results.csv",row.names = F)
+```
+
+Why does HBA1 and 
+```{r}
+
+```
 
 
 
@@ -791,8 +960,4 @@ freq_x_df <- GenesFromTissues(genes_of_int = freq_x_genes, key_dat = key_dat,
 
 ```
 
-Do analysis on all data
-```{r}
-
-```
 
