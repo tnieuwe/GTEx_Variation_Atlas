@@ -31,15 +31,19 @@ cluster_list <- AllGeneClusterPuller(location = "../../MARCC output/variance_gen
 Esophgeal junction analysis
 
 ```{r}
+## Get a correlation matrix of esophagus clusters
 all_cor_mat <- ClusterCombinerZscores("esophagus_gastroesophageal_junction",
                        cluster_vect = colnames(esoph_profile$esophagus_gastroesophageal_junction)[-1:-2],
                        esoph_profile,cor_matrix = T)
-
+## Cluster and plot these results to get a clear understanding of esophagus
+## relationships
 dendo <- hclust(dist(1-abs(all_cor_mat)))
 pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = FALSE)
 pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = dendo)
+```
 
-
+```{r}
+## Get a closer look at a group that seems to correlate well
 ClusterCombinerZscores("esophagus_gastroesophageal_junction",
                        cluster_vect = c("C.2", "A.2", "H", "K", "I.2"),
                        esoph_profile,cor_matrix = T)
@@ -56,16 +60,23 @@ ggplot(junction_prof, aes(TRISCHD, C2H, color = DTHHRDY_factor)) +
 
 ggplot(junction_prof, aes(factor(DTHHRDY, levels = c(1,2,3,4,0)), C2H, color = factor(DTHHRDY))) +
     ggforce::geom_sina()
+```
 
+
+```{r}
+## Test ischemia hypothesis through linear models
 model_1 <- lm(C2H~ DTHHRDY_factor + TRISCHD, data = junction_prof) 
 model_2 <- lm(C2H~ DTHHRDY_linear + TRISCHD, data = junction_prof)
 model_3 <- lm(C2H~ in_hospital_death + TRISCHD, data = junction_prof) 
 anova(model_1, model_2)
 AIC(model_1); AIC(model_2); AIC(model_3)
-## Model 1 is the best model
+## Model 1 is the best model and shows hardy score matters in this cluster
 summary(model_1)
 
+```
 
+Gain an understanding of A.2 and K cluster expression
+```{r}
 ## Check A.2 and K
 ggplot(junction_prof, aes(TRISCHD, A.2, color = DTHHRDY_factor)) +
     geom_point()
@@ -86,5 +97,26 @@ combined_genes <- ClusterCombinerGenes("esophagus_gastroesophageal_junction",
                      c("C.1", "F.2"),
                      cluster_list,for_R = T)
 paste0(combined_genes,collapse = ", ")
+```
+
+Muscularis
+
+```{r}
+## Get a correlation matrix of esophagus clusters
+all_cor_mat <- ClusterCombinerZscores("esophagus_muscularis",
+                       cluster_vect = colnames(esoph_profile$esophagus_muscularis)[-1:-2],
+                       esoph_profile,cor_matrix = T)
+## Cluster and plot these results to get a clear understanding of esophagus
+## relationships
+dendo <- hclust(dist(1-abs(all_cor_mat)))
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = FALSE)
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = dendo)
+```
+Combine E.2, F, A.2
+```{r}
+ClusterCombinerZscores("esophagus_muscularis",
+                       cluster_vect = c("E.2", "F", "A.2"),
+                       esoph_profile,cor_matrix = T)
+ClusterCombinerGenes("esophagus_muscularis", c("E.2", "A.2"),cluster_list)
 ```
 
