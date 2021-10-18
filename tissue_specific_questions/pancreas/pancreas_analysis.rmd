@@ -7,9 +7,11 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
 
 ```{r}
+library(DESeq2)
 library(tidyverse)
 library(pheatmap)
 source("../../global_in/general_scripts.R")
