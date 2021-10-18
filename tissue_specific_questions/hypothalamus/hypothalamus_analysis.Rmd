@@ -18,31 +18,44 @@ phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
 ```
 Read in ovary excel sheet
 ```{r}
-all_marker_genes <- readxl::read_excel("data_in/41467_2020_14936_MOESM2_ESM.xlsx",
-                   sheet = 2,skip = 2)
+pre_markers <- readxl::read_excel("data_in/41467_2020_18231_MOESM11_ESM.xlsx",
+                   sheet = 1)
 
-all_marker_genes <- filter(all_marker_genes,p_val_adj < 0.05)
-marker_gene_table <- table(all_marker_genes$gene)
-unique_markers <- names(marker_gene_table)[marker_gene_table == 1]
-all_marker_genes <- filter(all_marker_genes, gene %in% unique_markers)
+all_marker_genes <- pre_markers[,-1] %>% pivot_longer(cols = everything(),
+                                  names_to = "cluster", values_to = "gene") %>%
+    mutate(cluster_factor = factor(cluster),
+           human_gene = toupper(gene)) %>%
+    filter(!is.na(gene))
+
+### Keeping overlaps for the mean time
+#marker_gene_table <- table(all_marker_genes$gene)
+#unique_markers <- names(marker_gene_table)[marker_gene_table == 1]
+#all_marker_genes <- filter(all_marker_genes, gene %in% unique_markers)
 ```
 Load in clusters
 ```{r}
-cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = F)
-ovary_dat <- cluster_list$ovary
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = T)
+hypo_dat <- cluster_list$brain_hypothalamus
+
 ```
 
 Calculate overlaps
 ```{r}
-all_marker_genes <- mutate(all_marker_genes, cluster_factor = factor(cluster))
+
 dat_out <- NULL
-for (cluster_ind in seq_along(ovary_dat)) {
-    cur_genes <- ovary_dat[[cluster_ind]]
-    temp_dat <- filter(all_marker_genes, gene %in% cur_genes)
+for (cluster_ind in seq_along(hypo_dat)) {
+    cur_genes <- hypo_dat[[cluster_ind]]
+    temp_dat <- filter(all_marker_genes, human_gene %in% cur_genes)
     new_row <-t(cbind(table(temp_dat$cluster_factor))) %>%
         as.data.frame() %>%
         cbind(.,paste0(cur_genes,collapse = ";"))
-    rownames(new_row) <- names(ovary_dat)[cluster_ind]
+    rownames(new_row) <- names(hypo_dat)[cluster_ind]
     dat_out <- rbind(dat_out,new_row)
 }
 ```
+
+
+```{r}
+CommonGenes("HIST2H2BF", cluster_list,x_clust = F)
+```
+
