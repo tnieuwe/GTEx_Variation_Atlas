@@ -66,7 +66,8 @@ joined_panc <- left_join(pancreas_profile$pancreas, phen_dat) %>%
         MHT2D == 1 ~ "type_II",
         TRUE ~ "none"
     ),
-    diabetes = factor(diabetes, c("none", "type_II", "type_I")))
+    diabetes = factor(diabetes, c("none", "type_II", "type_I")),
+    DTHHRDY_factor = factor(DTHHRDY, c(1,2,3,4,0)))
 
 ggplot(joined_panc, aes(diabetes, A)) +
     ggforce::geom_sina() +
@@ -76,6 +77,18 @@ diabetic_model <- lm(A ~ diabetes + AGE + SEX + TRISCHD, data = joined_panc)
 summary(diabetic_model)
 
 ```
+
+Rin with plag2a cluster
+```{r}
+ggplot(joined_panc, aes(SMTSISCH, C.1,
+                        color = factor(DTHHRDY))) +
+    geom_point()
+
+acinar_model_1 <- lm(C.1 ~ SMTSISCH + DTHHRDY_factor + SMRIN, data = joined_panc)
+summary(acinar_model_1)
+```
+
+
 ## Test if cluster A would reach variability threshold without diabetics
 
 Step one make a new file of the pancreas data after removing diabetics
@@ -132,5 +145,7 @@ filter(ND_clusters,
 
 
 ```{r}
+
+
 ```
 
