@@ -112,6 +112,7 @@ ggplot(date_frame, aes(x = date, y = solved_clusters)) +
     geom_line() +
     geom_point() +
     theme_classic() +
+    geom_hline(yintercept=nrow(current_results), color = "red") +
     ylim(0, nrow(current_results)) +
     labs(title = "N of clusters solved over time",
          y="N of solved clusters")
