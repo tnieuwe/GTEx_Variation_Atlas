@@ -67,6 +67,8 @@ join_brain %>%
     ggplot(., aes(cereb_mito, cortex_mito)) +
     geom_point() 
 
+cor.test(join_brain$cereb_mito, join_brain$cortex_mito)
+
 join_brain %>%
     ggplot(., aes(factor(COHORT), cortex_mito)) +
     ggforce::geom_sina()
@@ -201,6 +203,9 @@ tidy_with_intron_model <- broom.mixed::tidy(obscene_model_plus)
 ## be removed as they don't explain the source of the variance.
 no_intron_formula <- str_replace(obscene_dat_formula_plus, "[+] SMSPLTRD [+]","+")
 no_intron_formula <- str_replace(no_intron_formula, "[+] SMNTERRT [+]","+")
+## Remove antisense because variability is captured by sense SME2ANTI
+no_intron_formula <- str_replace(no_intron_formula, "[+] SME2ANTI [+]","+")
+
 
 obscene_model_no_intron <- lmer(as.formula(no_intron_formula), data = obscene_dat_plus)
 
@@ -227,5 +232,31 @@ ggplot(obscene_dat, aes(SMSPLTRD, SMRIN, color = tissue)) +
 ```
 
 
+Test date hypothesis
+```{r}
 
+cerebellum_dat <- left_join(brain_profs$brain_cerebellum, samp_dat) %>%
+    left_join(., phen_dat)
+
+head(cerebellum_dat$SMNABTCHD)
+cerebellum_dat <- mutate(cerebellum_dat, nuc_iso_dat = as.Date(SMNABTCHD, format = "%m/%d/%Y"),
+                         nuc_iso_dat = as.Date(SMNABTCHD, format = "%m/%d/%Y"),
+                         exprs_date = as.Date(SMGEBTCHD, format = "%m/%d/%Y"))
+
+ggplot(cerebellum_dat, aes(nuc_iso_dat, A)) +
+    geom_point()
+
+ggplot(cerebellum_dat, aes(exprs_date, A)) +
+    geom_point()
+```
+Get N of brains tissues with mito course
+```{r}
+brain_clusters <- cluster_list[startsWith(names(cluster_list), "brain")]
+sum_of_mito_clusters <- c()
+for (brain_ind in seq_along(brain_clusters)) {
+   sum_of_mito_clusters <- append(sum_of_mito_clusters, "MTND1P23" %in% unlist(brain_clusters[[brain_ind]]))
+}
+
+sum(sum_of_mito_clusters)/length(brain_clusters)
+```
 
