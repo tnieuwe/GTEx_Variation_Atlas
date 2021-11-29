@@ -18,6 +18,7 @@ source("../../global_in/general_scripts.R")
 phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
 cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = F)
 samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 
 ```
 
@@ -75,9 +76,9 @@ ggplot(joined_panc, aes(diabetes, A)) +
     ggforce::geom_sina() +
     theme_classic()
 
-diabetic_model <- lm(A ~ diabetes + AGE + SEX + TRISCHD, data = joined_panc)
-summary(diabetic_model)
-
+diabetic_model <- lm(A ~ diabetes + AGE + SEX + SMTSISCH, data = joined_panc)
+diabetic_model_summ <- summary(diabetic_model)
+broom::tidy(diabetic_model)
 ```
 
 Rin with plag2a cluster
@@ -145,9 +146,24 @@ filter(ND_clusters,
 ## Nope
 ```
 
-
+Statistics for the paper
 ```{r}
+islet_dat <- GenesFromTissues("pancreas", c("INS", "GCG"),
+                 key_dat,vst_location = "../../Setup Code/output/") %>%
+    mutate(tissue = 'pancreas')
 
+islet_dat <- left_join(islet_dat, joined_panc)
 
+with_diab_cor <- cor.test(islet_dat$GCG,islet_dat$INS, method = "kendall")
+with_diab_cor
+with_diab_cor$p.value
+nrow(islet_dat)
+table(islet_dat$diabetes)
+
+islet_dat_ND <- filter(islet_dat, diabetes == "none")
+var(islet_dat$INS)
+var(islet_dat_ND$INS)
+cor_res <- cor.test(islet_dat_ND$GCG, islet_dat_ND$INS, method = "kendall")
+cor_res$p.value
 ```
 
