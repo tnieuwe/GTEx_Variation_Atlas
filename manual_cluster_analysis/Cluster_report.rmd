@@ -119,4 +119,95 @@ ggplot(date_frame, aes(x = date, y = solved_clusters)) +
 
 
 ```
+Load the excel file
+```{r}
+library(readxl)
+excel_dat <- read_excel("../manual_cluster_analysis/manual_curation_11_09_21.xlsx")
+
+table(excel_dat$generalized_cluster)
+
+excel_filt <- excel_dat %>%
+    mutate(generalized_cluster = case_when(
+        generalized_cluster == "unsolved" ~ "unknown",
+        generalized_cluster == "unknown" ~ "Unknown",
+        generalized_cluster == "Immuno" ~ "Immunoglobulin",
+        generalized_cluster == "new_contamination" ~ "Contamination",
+        generalized_cluster == "classic_contamination" ~ "Contamination",
+        generalized_cluster == "SELE cluster" ~ "Endothelial Activation",
+        generalized_cluster == "Inflammation" ~ "Other",
+        generalized_cluster == "Histones" ~ "Other",
+        generalized_cluster == "Immune" ~ "Other",
+        generalized_cluster == "Immuno/Mitochondria" ~ "Other",
+        generalized_cluster == "FOS/FOSB" ~ "Other",
+        T ~ generalized_cluster
+    ),
+    generalized_cluster = tools::toTitleCase(generalized_cluster)) %>%
+    filter(generalized_cluster != "X CLUST")
+
+excel_filt$generalized_cluster <- factor(excel_filt$generalized_cluster,
+                                         levels = names(sort(table(excel_filt$generalized_cluster))))
+
+table(excel_filt$generalized_cluster)
+
+excel_filt %>%
+    ggplot(., aes(y = generalized_cluster)) +
+    geom_bar() +
+    theme_bw() +
+geom_text(stat='count', aes(label=..count..),nudge_x = 5)
+
+counted_dat <- excel_filt %>% group_by(generalized_cluster) %>% count() %>%
+    mutate(`Cluster Class` = case_when(
+        generalized_cluster %in% c("SEX", "Contamination", "Accute Phase",
+                                   "Immunoglobulin", "Endothelial Activation",
+                                   "Mitochondria") ~ "Meta-Cluster",
+       TRUE ~ "Tissue Specific/Mixed"
+    ),
+    n = ifelse(generalized_cluster == "SEX", n/2, n))
+
+## Reorder data
+
+require(viridisLite)
+ggplot(counted_dat, aes(n, generalized_cluster, fill = `Cluster Class`)) +
+    geom_bar(stat="identity") +
+    xlim(0, 150) +
+    geom_text(aes(label=n), hjust=-.05, size=3.5)+
+    theme_minimal() +
+    scale_fill_viridis(discrete = T) + 
+    theme(legend.position = "top") +
+    labs( y = "Cluster Type", x= "N of Clusters")
+ggsave("data_out/cluster_type_fig.pdf",height = 5, width = 9)
+
+ggsave("data_out/cluster_type_fig_thin.pdf",height = 5, width = 5)
+```
+
+Sex AGE and race plots
+```{r}
+phen_dat <- read.csv("../global_in/gtex_phenotypes_v8.csv")
+subj_dat <- data.table::fread("../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt")
+
+sex_dat <- group_by(subj_dat, SEX) %>%
+    summarize(sex_count = n()) %>%
+    mutate(sex_percent = round(sex_count/nrow(subj_dat),digits = 2)) %>%
+    mutate(SEX = ifelse(SEX == 1, "Male", "Female"))
+
+sex_dat$sex_count <- c(636, 312)
+
+age_dat <- group_by(subj_dat, AGE) %>%
+    summarize(age_count = n()) %>%
+    mutate(age_percent = round(age_count/nrow(subj_dat),digits = 2))
+
+phen_dat %>%
+    ggplot(., aes(AGE)) +
+    geom_histogram(fill =  "white", color = "black") +
+    theme_classic() +
+    theme(text = element_text(size = 18))
+
+ggplot(sex_dat, aes(sex_count, SEX, fill = SEX)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(label=sex_count),nudge_x = -43, size=8)+
+    theme_classic() +
+    theme(text = element_text(size = 16)) +
+    labs(x = "Count")
+ggsave("sex_count.pdf", height = 3, width = 8 )
+```
 
