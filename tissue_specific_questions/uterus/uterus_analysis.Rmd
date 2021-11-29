@@ -1,0 +1,49 @@
+---
+title: "Uterus analysis"
+author: "Tim N"
+date: "10/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = T)
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+```{r}
+
+uterus_profile <- ZscoreProfilePuller("uterus", "../../MARCC output/variance_profiles_kendall/")
+## Get a correlation matrix of esophagus clusters
+all_cor_mat <- ClusterCombinerZscores("uterus",
+                       cluster_vect = colnames(uterus_profile$uterus)[-1:-2],
+                       uterus_profile,cor_matrix = T)
+## Cluster and plot these results to get a clear understanding of esophagus
+## relationships
+dendo <- hclust(dist(1-abs(all_cor_mat)))
+pheatmap((all_cor_mat),cluster_cols = FALSE, cluster_rows = FALSE)
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = dendo)
+```
+
+```{r}
+ClusterCombinerGenes("uterus", c("G", "M.1", "J.1"), cluster_list)
+```
+
+```{r}
+joined_dat <- left_join(uterus_profile$uterus, phen_dat)
+
+menopause_quantiles<- quantile(joined_dat$AGE, c(.25, .75))
+
+young_uterus <- sum(joined_dat$AGE <= menopause_quantiles[1])
+older_uterus <-sum(joined_dat$AGE >= menopause_quantiles[2])
+nrow(joined_dat) - (young_uterus + older_uterus) 
+```
+
