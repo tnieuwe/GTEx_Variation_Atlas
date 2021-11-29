@@ -55,7 +55,8 @@ Join_data
 final_dat <- clust_profs %>% rownames_to_column(var = "SAMPID") %>%
     mutate(SUBJID = GTEx_SAMPID_to_SUBJID(SAMPID)) %>%
     left_join(phen_dat, by = "SUBJID") %>%
-    left_join(samp_dat, by = "SAMPID") 
+    left_join(samp_dat, by = "SAMPID") %>%
+    mutate(`Hardy Score`= factor(DTHHRDY, levels = c(1,2,3,4,0)))
 
 ```
 
@@ -70,13 +71,32 @@ summary(lm(G ~ SMTSISCH + DTHVNT + AGE + SEX, data = lm_dat))
 
 
 ggplot(final_dat, aes(x = SMTSISCH, y = E.2, color = as.factor(DTHVNT))) +
-    geom_point(alpha = .5)
+    geom_point(alpha = .8) +
+    theme_classic() +
+    scale_color_viridis(option = "A", discrete = T)
 
 ggplot(final_dat, aes(x = SMRIN, y = E.2, color = as.factor(DTHHRDY))) +
     geom_point(alpha = .5)
 
-ggplot(final_dat, aes(x = SMTSISCH, y = E.2, color = as.factor(DTHHRDY))) +
-    geom_point(alpha = .5)
+for_plot <- filter(final_dat, !is.na(`Hardy Score`))
+
+ggplot(for_plot, aes(x = SMTSISCH, y = E.2, color = `Hardy Score`)) +
+    geom_point(alpha = .8) +
+    theme_classic() +
+    scale_color_viridis(option = "C", discrete = T,end = .93) +
+    theme(text = element_text(size=15)) +
+    labs(x = "Sample Ischemic Time",
+         y = "Cluster E.2 Z-score")
+
+
+ggplot(for_plot, aes(x = `Hardy Score`, y = E.2, color = `Hardy Score`)) +
+    ggforce::geom_sina() +
+    geom_boxplot(width=0.1) +
+    theme_classic() +
+    scale_color_viridis(option = "C", discrete = T,end = .93) +
+    theme(text = element_text(size=15), legend.position = "top") +
+    labs(x = "Hardy Score",
+         y = "Cluster E.2 Z-score")
 
 ggplot(final_dat, aes(x = SMTSISCH, y = E.1, color = as.factor(DTHHRDY))) +
     geom_point(alpha = .5)
@@ -382,6 +402,7 @@ steph_plots <- list()
 analysis_out <- NULL
 analysis_out_linear <- NULL
 chi_table <- NULL
+simple_output <- NULL
 hold_off_genes <- c("CTC-338M12.1", "CTD-2083E4.7", "CTD-3064M3.7")
 
 for (rsid_ind in seq(nrow(rsids_avaialable))) {
@@ -550,5 +571,29 @@ cor(hardy_inferred)
 
 ggplot(hardy_cov_test, aes(DTHHRDY_factor, InferredCov1)) +
     ggforce::geom_sina()
+```
+
+
+```{r}
+lm_dat <- mutate(lm_dat,
+    DTHHRDY_factor = factor(DTHHRDY, c(1,2,3,4,0)),
+    in_hospital_death = ifelse(DTHHRDY %in% c(1,2), FALSE, TRUE)
+)
+
+model_1 <- lm(E.2 ~ DTHHRDY_factor + AGE + SEX+ SMTSISCH, data = lm_dat)
+model_2 <- lm(E.2 ~ in_hospital_death + AGE + SEX + SMTSISCH, data = lm_dat)
+
+summary(model_1)
+summary(model_2)
+
+AIC(model_1)
+AIC(model_2)
+tidy_model_1 <- broom::tidy(model_1)
+write.csv(tidy_model_1, "data_out/tidy_model_for_talk.csv")
+
+
+only_hardy <- lm(E.2 ~ DTHHRDY_factor + AGE + SEX, data = lm_dat)
+only_isch <- lm(E.2 ~ SMTSISCH + AGE + SEX, data = lm_dat)
+
 ```
 
