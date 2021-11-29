@@ -1,0 +1,58 @@
+---
+title: "pituitary_analysis"
+author: "Tim N"
+date: "10/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = T)
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+```{r}
+
+pituitary_profile <- ZscoreProfilePuller("pituitary", "../../MARCC output/variance_profiles_kendall/")
+## Get a correlation matrix of esophagus clusters
+all_cor_mat <- ClusterCombinerZscores("pituitary",
+                       cluster_vect = colnames(pituitary_profile$pituitary)[-1:-2],
+                       pituitary_profile,cor_matrix = T)
+## Cluster and plot these results to get a clear understanding of esophagus
+## relationships
+dendo <- hclust(dist(1-abs(all_cor_mat)))
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = FALSE)
+pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = dendo)
+```
+
+
+Test if any clusters correlate well with PRL
+```{r}
+pituitary_gene_dat <- GenesFromTissues("pituitary", "PRL", key_dat, "../../Setup Code/output/")
+
+combined_dat <- left_join(pituitary_gene_dat,pituitary_profile$pituitary) %>%
+    left_join(., phen_dat) %>%
+    left_join(.,samp_dat)
+
+ggplot(combined_dat, aes(PRL, B.1)) +
+    geom_point()
+ggplot(combined_dat, aes(PRL, B.2)) +
+    geom_point()
+
+ggplot(combined_dat, aes(AGE, C.1)) +
+    geom_point()
+
+ggplot(combined_dat, aes(factor(RACE), C.1)) +
+    ggforce::geom_sina()
+
+```
+
