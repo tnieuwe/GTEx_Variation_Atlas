@@ -152,6 +152,12 @@ summary(model_out)
 
 anova(simple_model, model_out)
 ## SMRIN is the main contributor
+
+ggplot(for_model, aes(SMRIN, mito_cluster)) +
+    geom_hex() +
+    theme_minimal() +
+    theme(text = element_text(size = 15), legend.position = "bottom") +
+    labs(x = "Sample RIN", y = "Mitochondrail Cluster Z-score")
 ```
 
 ```{r}
@@ -229,6 +235,11 @@ ggplot(obscene_dat, aes(SMSPLTRD, SMRIN, color = tissue)) +
     geom_point(alpha = .5) +
     theme_classic() +
     theme(legend.position = "bottom")
+
+ggplot(obscene_dat, aes(SMRIN, mito_cluster, color = tissue)) +
+    geom_point(alpha = .5) +
+    theme_classic() +
+    theme(legend.position = "none")
 ```
 
 
@@ -258,5 +269,18 @@ for (brain_ind in seq_along(brain_clusters)) {
 }
 
 sum(sum_of_mito_clusters)/length(brain_clusters)
+```
+Should I make tissue a non random effect?
+```{r}
+
+
+tissue_effect_formula <- str_replace(no_intron_formula, "\\(1\\|tissue\\)","tissue")
+
+
+
+obscene_model_plus_tissue <- lmer(as.formula(tissue_effect_formula), data = obscene_dat_plus)
+obscene_model_summary_tissue <- summary(obscene_model_plus)
+
+tidy_with_intron_model_tissue <- broom.mixed::tidy(obscene_model_plus_tissue)
 ```
 
