@@ -1,0 +1,105 @@
+---
+title: "PLA2G2A_cluster_analysis.rmd"
+author: "Tim N"
+date: "11/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DESeq2)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+source("../../global_in/general_scripts.R")
+```
+
+In PLA2G2A_analysis.rmd we look at PLA2G2A expression across tissues as a single gene, here we are going to analyze how it interacts within the clusters it is found in.
+```{r}
+## Load SUBJ data
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
+    mutate(DTHHRDY = factor(DTHHRDY,levels = c(1, 2, 3,4, 0)),
+           MHBCTINF = factor(MHBCTINF))
+dth_dat <- select(phen_dat, SUBJID, TRISCHD, DTHHRDY, MHBCTINF)%>%
+    mutate(DTHHRDY = factor(DTHHRDY,levels = c(1, 2, 3,4, 0),ordered = T),
+           MHBCTINF = factor(MHBCTINF))
+## Simplified cause of death
+COD_phen <- read.csv("../../global_in/gtex_COD_phenotype.csv")
+## Load samp data.
+samp_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt", fill=T,
+                      stringsAsFactors=FALSE, sep="\t", header=T)
+## Load common subj_dat
+subj_dat <- read.delim("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt", fill=T,
+                      stringsAsFactors=FALSE, sep="\t", header=T)
+# dth_dat <- select(subj_dat, SUBJID, DTHHRDY,) %>%
+#     mutate(DTHHRDY = factor(DTHHRDY,levels = c(1, 2, 3,4, 0),ordered = T))
+## Load keys 
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+
+
+## load manual curation
+man_cur <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+
+## Cluster list
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",x_clust = F)
+
+```
+
+
+Pull Z-score tissues that have plag2 clusters
+```{r}
+plag2_pre_clusters <- ClusterGeneOverlaps("PLA2G2A", cluster_list) %>%
+    rownames_to_column(var = "tiss_cluster") %>%
+    separate(col = tiss_cluster, sep = "-", remove = F, into = c("tissue", "cluster"))
+plag_tiss <- plag2_pre_clusters$tissue
+plag_unfilt_prof <- ZscoreProfilePuller(plag_tiss,
+                                        location = "../../MARCC output/variance_profiles_kendall/")
+```
+Loop and pool data into a single pla2g2a associated column
+```{r}
+plag2_zscores <- NULL
+
+for (tissue_ind in seq_along(plag_unfilt_prof)) {
+    cur_tiss <- names(plag_unfilt_prof)[tissue_ind]
+    cur_clust <- plag2_pre_clusters$cluster[plag2_pre_clusters$tissue==cur_tiss]
+    new_dat <- plag_unfilt_prof[[cur_tiss]][,c("SUBJID", "SAMPID", cur_clust)]
+    colnames(new_dat)[3] <- "plag2_clust"
+    new_dat <- cbind(new_dat, cur_tiss)
+    plag2_zscores <- rbind(plag2_zscores, new_dat)
+}
+
+plag2_zscores <- left_join(plag2_zscores, samp_dat) %>% left_join(., phen_dat) %>%
+    left_join(., COD_phen) %>%
+    rename(tissue = cur_tiss)
+```
+
+
+```{r}
+
+plag_list <- list()
+for (cur_tiss in unique(plag2_zscores$tissue)) {
+    cur_cluster<- filter(plag2_pre_clusters, tissue == cur_tiss)$cluster
+    other_genes <- cluster_list[[cur_tiss]][[cur_cluster]]
+    temp_dat <- filter(plag2_zscores, tissue ==  cur_tiss)
+    plag_plot <- ggplot(temp_dat, aes(DTHCODSIM, plag2_clust)) +
+        ggforce::geom_sina() +
+        labs(title = cur_tiss)
+    plag_model_summ <- lm(plag2_clust ~ DTHHRDY + DTHCODSIM + SMTSISCH +  AGE + SEX + SMGEBTCH,
+                    data = temp_dat)%>% summary()
+    plag_list[[cur_tiss]][["plot"]] <- plag_plot
+    plag_list[[cur_tiss]][["model"]] <- plag_model_summ
+    plag_list[[cur_tiss]][["cluster_genes"]] <- other_genes
+}
+plag_list$lung
+```
+
+Below this point I want to see what other genes frequently show up together
+
+```{r}
+ClusterGeneOverlaps("HP",cluster_list)
+```
+just_artery test
+```{r}
+
+```
+
