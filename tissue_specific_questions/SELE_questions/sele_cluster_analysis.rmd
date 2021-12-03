@@ -1,0 +1,356 @@
+---
+title: "SELE_cluster_analysis"
+author: "Tim N"
+date: "10/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+```
+
+```{r}
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+death_dat <- read.csv("../../global_in/gtex_COD_phenotype.csv")
+```
+
+Find all  clusters with SELE
+```{r}
+sele_clusters <- row.names(ClusterGeneOverlaps("SELE",cluster_list,only_hits = T))
+
+sele_cluster_df <- as.data.frame(sele_clusters) %>%
+    separate(col = sele_clusters, into = c("tissue", "cluster"), sep = "-")
+```
+
+Get the Z-scores fort clusters associated with SELE
+```{r}
+all_profiles <- ZscoreProfilePuller(sele_cluster_df$tissue,"../../MARCC output/variance_profiles_kendall/")
+sele_profiles <- NULL
+for (row_ind in seq(nrow(sele_cluster_df))) {
+    cur_tiss <- sele_cluster_df[row_ind,1]
+    cur_clust <- sele_cluster_df[row_ind,2]
+    if (cur_clust == "X") {
+        next
+    }
+    temp_dat <- all_profiles[[cur_tiss]][,c("SUBJID", "SAMPID", cur_clust)]
+    colnames(temp_dat)[3] <- "SELE_prof"
+    temp_dat$tissue <- cur_tiss
+    sele_profiles <- rbind(sele_profiles, temp_dat)
+}
+
+
+joined_dat <- sele_profiles %>% left_join(., samp_dat) %>% left_join(., phen_dat) %>% left_join(.,death_dat) %>%
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)))
+```
+
+```{r}
+ggplot(joined_dat, aes(SMTSISCH, SELE_prof, color = tissue)) +
+    geom_point(alpha = .3) +
+    theme(legend.position = "none")
+
+```
+
+```{r}
+require(lme4)
+require(lmerTest)
+ggplot(joined_dat, aes(DTHCODSIM, SELE_prof)) +
+    ggforce::geom_sina(alpha = 0.5) +
+    theme(legend.position = "none")
+
+initial_result <- lmer(SELE_prof ~ DTHCODSIM * tissue + DTHHRDY_factor +
+         SMTSISCH + AGE + (1|SUBJID), data = joined_dat)  %>% broom.mixed::tidy()
+```
+
+
+Complex model
+```{r}
+
+model <- lmer(SELE_prof ~ SMTSISCH + DTHHRDY_factor + AGE + SEX + SMGEBTCH + (1|SUBJID), data =joined_dat)
+summary(model)
+```
+
+Individual tissue SELE
+```{r}
+
+all_tissues <- unique(joined_dat$tissue)
+model_list <- list()
+new_df <- NULL
+for (cur_tissue in all_tissues) {
+    cur_dat <- filter(joined_dat, tissue == cur_tissue)
+    current_model <- lm(SELE_prof ~ SMTSISCH + DTHHRDY_factor + AGE + SEX + SMGEBTCH,
+       data = cur_dat)
+   cur_summary <- broom::tidy(summary(current_model))
+   model_list[[cur_tissue]] <- cur_summary
+   ## Add readable output
+   terms_we_care <- cur_summary[2:6,]
+   terms_we_care$tissue <- cur_tissue
+   terms_we_care <- terms_we_care %>% mutate(estimate_direction = ifelse(estimate > 0, "positive", "negative"),
+                            sig_o_no = ifelse(p.value < 0.05, "sig", "not_sig"))
+   new_df <- rbind(new_df, terms_we_care)
+}
+
+table(new_df$term, new_df$sig_o_no)
+
+hist(new_df$p.value)
+```
+How often is PLAG2A and SELE together or opposite of each other?
+```{r}
+sele_vs_plag <- GenesFromTissues("", c("PLA2G2A", "SELE"), key_dat, "../../Setup Code/output/", TRUE)
+cor.test(sele_vs_plag$SELE, sele_vs_plag$PLA2G2A,method = "kendall")
+```
+
+```{r}
+sele_and_plag <- ClusterGeneOverlaps(c("SELE", "PLA2G2A"),cluster_list,only_hits = T)
+```
+
+
+See  how different tissues deal with MI vs Anoxia
+```{r}
+
+## Filter data to MI and anosmia
+mi_anox <- filter(joined_dat, DTHCODSIM %in% c("MI", "Anoxia"))
+## Generate random tissues
+rand_tisses <- sample(unique(mi_anox$tissue), replace = F,size = 4)
+
+temp_test <- filter(mi_anox, tissue %in% rand_tisses)
+
+
+ggplot(temp_test, aes(tissue, SELE_prof, color = DTHCODSIM)) +
+    ggforce::geom_sina() + coord_flip()
+
+ggplot(mi_anox, aes(tissue, SELE_prof, color = DTHCODSIM)) +
+    ggforce::geom_sina() + coord_flip()
+
+ggsave("data_out/anoxia_v_MI_sele.pdf", width = 8, height = 24)
+```
+
+Test if IL6, SELE, and TGFB1 are expressed in MI
+```{r}
+
+mi_gene_test <- GenesFromTissues(tiss_of_int = c(""),
+                                    genes_of_int = c("IL6", "SELE", "TGFB1","KLF2", "PECAM1"),
+                                                     key_dat =  key_dat,
+                                                        "../../Setup Code/output/", T)
+
+mi_gene_test_wide <- GenesFromTissWiden(mi_gene_test)
+mi_gene_test_heart_only <- mi_gene_test %>% filter(startsWith(tissue, "heart")) %>%
+    left_join(., death_dat) %>%
+    left_join(., phen_dat) %>%
+    left_join(., samp_dat) %>%
+    mutate(MI_or_not = ifelse(DTHCODSIM == "MI", "MI", "not_MI"),
+           MI_or_not = factor(MI_or_not, levels = c("not_MI", "MI")))
+
+mi_gene_test <- inner_join(mi_gene_test, mi_anox)
+
+
+ggplot(mi_gene_test, aes(tissue, KLF2, color = DTHCODSIM)) +
+    ggforce::geom_sina() +
+    coord_flip()
+
+
+ggplot(mi_gene_test, aes(SELE, KLF2, color = tissue)) +
+    geom_point(alpha = 0.3) +
+    theme(legend.position = "none")
+
+ggplot(mi_gene_test, aes(SELE, PECAM1, color = tissue)) +
+    geom_point(alpha = 0.3) +
+    theme(legend.position = "none")
+
+ggplot(mi_gene_test, aes(KLF2, PECAM1, color = tissue)) +
+    geom_point(alpha = 0.3) +
+    theme(legend.position = "none")
+
+
+
+    
+
+ggplot(mi_gene_test_heart_only, aes(MI_or_not, IL6)) +
+    ggforce::geom_sina() +
+    facet_grid(~tissue)
+
+ggplot(mi_gene_test_heart_only, aes(MI_or_not, SELE)) +
+    ggforce::geom_sina() +
+    facet_grid(~tissue)
+
+ggplot(mi_gene_test_heart_only, aes(IL6, SELE, color = tissue, shape = MI_or_not)) +
+    geom_point()
+
+summary(lm(IL6 ~MI_or_not * tissue + AGE+ SEX+ SMTSISCH + factor(DTHHRDY), data = mi_gene_test_heart_only))
+
+ggplot(mi_gene_test_heart_only, aes(SMTSISCH, IL6)) +
+    geom_point()
+
+ggplot(mi_gene_test_heart_only, aes(MI_or_not, SELE)) +
+    ggforce::geom_sina()
+
+## Separate heart checks
+hearts <- unique(mi_gene_test_heart_only$tissue)
+heart_results <- list()
+for (cur_heart in hearts) {
+    ind <- mi_gene_test_heart_only$tissue == cur_heart
+    pre_test <- mi_gene_test_heart_only[ind,]
+    cur_model_IL6 <- lm(IL6 ~ MI_or_not + AGE + SEX + SMTSISCH + factor(DTHHRDY),
+                    data = pre_test) %>% summary()
+    cur_model_SELE <- lm(SELE ~ MI_or_not + AGE + SEX + SMTSISCH + factor(DTHHRDY),
+                    data = pre_test) %>% summary()
+    heart_results[[cur_heart]][["IL6"]] <- cur_model_IL6
+    heart_results[[cur_heart]][["SELE"]] <- cur_model_SELE
+}
+```
+
+Brain only analysis
+```{r}
+brain_dat  <- filter(joined_dat, startsWith(tissue, "brain"))
+no_brain_dat <- filter(joined_dat, !startsWith(tissue, "brain"))
+ggplot(brain_dat, aes(DTHCODSIM, SELE_prof)) +
+    ggforce::geom_sina(alpha = 0.5) +
+    theme(legend.position = "none")
+
+ggplot(no_brain_dat, aes(DTHCODSIM, SELE_prof)) +
+    ggforce::geom_sina(alpha = 0.5) +
+    theme(legend.position = "none")
+
+brain_tf_dat <- mutate(joined_dat, brain_tiss = ifelse(startsWith(tissue, "brain"), "brain_tiss", "not_brain"))
+
+ggplot(brain_tf_dat, aes(DTHCODSIM, SELE_prof)) +
+    ggforce::geom_sina(alpha = 0.5) +
+    theme(legend.position = "none") + facet_grid(~brain_tiss) +
+    theme(axis.text.x = element_text(angle = 80, hjust=1))
+    
+```
+
+Myocardial infarction is a an artefact
+```{r}
+
+no_brain_dat <- mutate(no_brain_dat,
+                       MI_or_not = ifelse(DTHCODSIM == "MI", "MI", "not_MI"))
+all_no_brain_tissues <- unique(no_brain_dat$tissue)
+pdf("data_out/MI_artefact.pdf", height = 6, width = 10)
+for (cur_tiss_ind in seq_along(all_no_brain_tissues)) {
+    cur_tiss <- all_no_brain_tissues[[cur_tiss_ind]]
+    ind <- no_brain_dat$tissue == cur_tiss
+    cur_dat <- no_brain_dat[ind,]
+    plt <- ggplot(cur_dat, aes(DTHHRDY_factor, SELE_prof, color = MI_or_not)) +
+        ggforce::geom_sina() +
+        labs(title = paste("Tissue:", cur_tiss))
+    print(plt)
+}
+dev.off()
+
+
+
+pdf("data_out/MI_artefact_4weeks.pdf", height = 6, width = 10)
+for (cur_tiss_ind in seq_along(all_no_brain_tissues)) {
+    cur_tiss <- all_no_brain_tissues[[cur_tiss_ind]]
+    ind <- no_brain_dat$tissue == cur_tiss
+    cur_dat <- no_brain_dat[ind,]
+    plt <- ggplot(cur_dat, aes(DTHHRDY_factor, SELE_prof, color = )) +
+        ggforce::geom_sina() +
+        labs(title = paste("Tissue:", cur_tiss))
+    print(plt)
+}
+dev.off()
+```
+
+
+
+
+SELE obesity test
+```{r}
+
+fat_only <- filter(joined_dat, startsWith(tissue, "adipose"))
+
+ggplot(fat_only, aes(BMI, SELE_prof, color = tissue)) +
+    geom_point()
+```
+
+Time after stroke?
+
+```{r}
+stroke_only <- brain_dat %>% filter(DTHCODSIM == "Stroke") 
+
+ggplot(stroke_only, aes(TRISCHD, SELE_prof)) +
+    geom_point()
+
+```
+Shared hits plot
+```{r}
+SharedHits <- function(gene_of_int, cluster_list, min_appearances,
+                       cluster_rows = T, cluster_cols = T,
+                       gene_text_size = 7){
+    ### The purpose of this function is to find out what tissues are sharing
+    ### the most overlapping genes in a cluster based on another gene. e.g.
+    ### what tissues have the most similar clusters of tissues that have SELE?
+    
+    ### Get a total vector of genes that cluster at any point with SELE
+    clust_int_list <- list()
+    for (tiss_ind in seq_along(cluster_list)) {
+        cur_tiss <- cluster_list[[tiss_ind]]
+        cur_tiss_name <- names(cluster_list)[[tiss_ind]]
+        int_find <- unlist(lapply(cur_tiss, function(x){gene_of_int %in% x}))
+        if (!(TRUE %in% int_find)) {
+            next
+        }
+        if (names(int_find)[int_find==TRUE] == "X") {
+            next
+        }
+        clust_int_list[[cur_tiss_name]] <- unname(unlist(cur_tiss[int_find]))
+    }
+    ### Possibly filter as a table to the min_appearances
+    gene_overlap_table <- sort(table(unlist(clust_int_list)),decreasing = T)
+    most_common_genes <- names(gene_overlap_table)[gene_overlap_table >= min_appearances]
+    ### create a matrix with the columns being tissues and the y axis being
+    ### gene overlaps
+    new_matrix <- matrix(nrow = length(most_common_genes),
+                         ncol = length(clust_int_list))
+    colnames(new_matrix) <- names(clust_int_list)
+    rownames(new_matrix) <- most_common_genes
+    
+    ## Might be a way to do this with apply, but rather do it right than fast
+    for (cur_ind in seq(ncol(new_matrix))) {
+        cur_name <- colnames(new_matrix)[cur_ind]
+        temp_result <- rownames(new_matrix) %in%  clust_int_list[[cur_name]]
+        temp_result <- as.numeric(temp_result)
+        new_matrix[,cur_ind] <- temp_result
+    }
+    
+    ### Make pheatmap too
+    map_out <- pheatmap(new_matrix,
+                        cluster_rows = cluster_rows,
+                        cluster_cols = cluster_cols,
+                        fontsize_row = gene_text_size,
+                        border_color = "black")
+    ### Wrap together into a single output
+    final_list <- list()
+    final_list[["heatmap_res"]] <- map_out
+    final_list[["matrix_res"]] <- new_matrix
+    return(final_list)
+}
+
+SELE_share <- SharedHits("SELE", cluster_list, min_appearances = 2,
+                         gene_text_size = 5)
+print(SELE_share$heatmap_res)
+pdf(file = "data_out/SELE_overlaps_prototype.pdf", height = 20, width = 10)
+print(SELE_share$heatmap_res)
+dev.off()
+
+
+
+PLA2G2A_share <- SharedHits("PLA2G2A", cluster_list, min_appearances = 2)
+print(PLA2G2A_share$heatmap_res)
+pdf(file = "data_out/PLA2G2A_overlaps_prototype.pdf", height = 20, width = 10)
+print(PLA2G2A_share$heatmap_res)
+dev.off()
+```
+
