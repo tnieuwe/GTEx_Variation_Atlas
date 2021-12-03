@@ -141,3 +141,11 @@ mega_cluster_2_noplag_marker <- filter(all_marker_genes, gene %in% mega_cluster_
 table(mega_cluster_2_noplag_marker$cluster_factor)
 ```
 
+```{r}
+lm(mega_z_2_noplag ~ DTHHRDY_factor + AGE + TRISCHD, data = ovary_df) %>%
+    summary()
+
+lm(mega_z_2 ~ DTHHRDY_factor + AGE + TRISCHD, data = ovary_df) %>%
+    summary()
+```
+
