@@ -65,16 +65,18 @@ ClusterCombinerZscores("pancreas",
 joined_panc <- left_join(pancreas_profile$pancreas, phen_dat) %>%
     left_join(., samp_dat) %>%
     mutate(diabetes = case_when(
-        MHT1D == 1 ~ "type_I",
-        MHT2D == 1 ~ "type_II",
-        TRUE ~ "none"
+        MHT1D == 1 ~ "Type I",
+        MHT2D == 1 ~ "Type II",
+        TRUE ~ "None"
     ),
-    diabetes = factor(diabetes, c("none", "type_II", "type_I")),
+    diabetes = factor(diabetes, c("None", "Type II", "Type I")),
     DTHHRDY_factor = factor(DTHHRDY, c(1,2,3,4,0)))
 
 ggplot(joined_panc, aes(diabetes, A)) +
     ggforce::geom_sina() +
-    theme_classic()
+    theme_classic() +
+    theme(text = element_text(size=15)) +
+    labs(x = "Diabetes Status", y = "A Cluster Z-score")
 
 diabetic_model <- lm(A ~ diabetes + AGE + SEX + SMTSISCH, data = joined_panc)
 diabetic_model_summ <- summary(diabetic_model)
