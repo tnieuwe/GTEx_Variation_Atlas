@@ -24,7 +24,9 @@ cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/
 manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
 key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
-    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)))
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)),
+           DTHHRDY_ordinal = factor(DTHHRDY, levels = c(1,2,3,4,0),ordered = TRUE))
+           
 samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
 ```
 
@@ -57,7 +59,7 @@ CommonGenes("FOSB", cluster_list, x_clust = F,1)
 ### FOSB's top 10 most common clustering genes
 CommonGenes("FOSB", cluster_list, x_clust = F,11)
 
-
+cat(CommonGenes("FOSB", cluster_list, x_clust = F,11)$final_vect, sep = "\n")
 ```
 
 IL6 over SELE
@@ -80,7 +82,7 @@ common_IL6
 common_SELE <- CommonGenes("SELE", cluster_list, x_clust = F,11)
 common_SELE
 
-cat(intersect(common_IL6$final_vect, common_SELE$final_vect))
+cat(intersect(common_IL6$final_vect, common_SELE$final_vect), sep = "\n")
 
 ```
 
@@ -124,6 +126,8 @@ zscores_of_tiss <- ZscoreProfilePuller(
 
 ### Begin loop of data
 master_plot_list <- list()
+full_results <- list()
+analysis_out <- NULL
 for (clust_ind in seq(nrow(clusters_of_interest))) {
     cur_clust <- clusters_of_interest[clust_ind,]
     temp_df <- zscores_of_tiss[[cur_clust$r_names]][,
@@ -132,6 +136,8 @@ for (clust_ind in seq(nrow(clusters_of_interest))) {
                                                       cur_clust$cluster)]
     temp_df <- left_join(temp_df, phen_dat, by = "SUBJID") %>%
         left_join(., samp_dat, by = "SAMPID")
+    
+    ### Plotting data
     isch_plot <- ggplot(temp_df, aes_string(x = "SMTSISCH",
                                y = cur_clust$cluster,
                                color = "DTHHRDY_factor")) +
@@ -146,17 +152,77 @@ for (clust_ind in seq(nrow(clusters_of_interest))) {
         scale_color_viridis(option = "C", discrete = T,end = .90) +
         theme_classic() #+
         #labs(title = cur_clust$r_names, subtitle = cur_clust$found_genes)
-    
+    ## Joining plots
     patch_plot <- isch_plot / hardy_plot +
         plot_layout(guides = "collect") & theme(legend.position = "right")
     master_plot_list[[paste0(cur_clust$r_names,"_",cur_clust$cluster)]] <-
         patch_plot
+    ### Statistical analysis
+    temp_formula <- paste0(cur_clust$cluster,
+                           " ~ DTHHRDY_ordinal + SMTSISCH + AGE + SEX + SMGEBTCH")
+    tidy_res <- lm(as.formula(temp_formula),data = temp_df) %>% broom::tidy()
+    tidy_res$tissue <- cur_clust$r_names
+    tidy_res$cluster <- cur_clust$cluster
+    tidy_res$genes <- cur_clust$found_genes
+    ## Save all data in list
+    full_results[[paste0(cur_clust$r_names,"_",cur_clust$cluster)]] <- tidy_res
+    ## Filter data for p-value correction on ischemic time and hardy
+    ## the variables we care about. Also remove blood only because that is jsut
+    ## a positive control
+    tidy_filt <- tidy_res %>% filter(grepl("factor|SMTSISCH|ordinal.L",
+                                           x = term), genes != "HBB")
+    analysis_out <- rbind(analysis_out, tidy_filt)
 }
 
+## Print all plots
 pdf("data_out/possible_isch_hardy_clusters.pdf", height = 9, width = 9)
 for (cur_plot in master_plot_list) {
     print(cur_plot)
 }
 dev.off()
+
+## Correct for multiple correction
+analysis_out <- mutate(analysis_out,
+                       p_adj = p.adjust(p.value, method = "fdr"),
+                       is_sig = p_adj < 0.05,
+                       positive_o_neg = ifelse(estimate > 0,
+                                               "positive",
+                                               "negative"),
+                       has_IL6 = ifelse(str_detect(genes, "IL6"),
+                                           "yes", "no"),
+                       has_PLA2G2A = ifelse(str_detect(genes, "PLA2G2A"),
+                                           "yes", "no"),
+                       has_CHI3L1 = ifelse(str_detect(genes, "CHI3L1"),
+                                           "yes", "no"),
+                       has_SELE = ifelse(str_detect(genes, "SELE"),
+                                           "yes", "no"),
+                       has_FOSB = ifelse(str_detect(genes, "FOSB"),
+                                           "yes", "no"))
+
+table(analysis_out$is_sig, analysis_out$term)
+
+
+sig_hardy_result <- filter(analysis_out,
+                           str_detect(term, "DTHHRDY"),
+                           is_sig == TRUE)
+
+
+
+table(sig_hardy_result$positive_o_neg, sig_hardy_result$has_IL6)
+table(sig_hardy_result$positive_o_neg, sig_hardy_result$has_SELE)
+table(sig_hardy_result$positive_o_neg, sig_hardy_result$has_PLA2G2A)
+table(sig_hardy_result$positive_o_neg, sig_hardy_result$has_CHI3L1)
+table(sig_hardy_result$positive_o_neg, sig_hardy_result$has_FOSB)
+
+## Rsplit brains
+brain_ind <- str_detect(sig_hardy_result$tissue, "brain")
+sig_hardy_result_no_brain <- sig_hardy_result[!brain_ind,]
+sig_hardy_result_brain <- sig_hardy_result[brain_ind,]
+
+
+table(sig_hardy_result_no_brain$positive_o_neg, sig_hardy_result_no_brain$has_IL6)
+table(sig_hardy_result_no_brain$positive_o_neg, sig_hardy_result_no_brain$has_CHI3L1)
+table(sig_hardy_result_no_brain$positive_o_neg, sig_hardy_result_no_brain$has_PLA2G2A)
+
 ```
 
