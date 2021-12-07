@@ -1,0 +1,162 @@
+---
+title: "General meta-cluster stats"
+author: "Tim N"
+date: "12/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+library(viridis)
+library(patchwork)
+library(ggforce)
+source("../../global_in/general_scripts.R")
+```
+
+```{r}
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)))
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+```
+
+
+Master overlaps
+```{r}
+master_overlap <- ClusterGeneOverlaps(c("FOSB", "IL6", "CHI3L1"),cluster_list) %>%
+    rownames_to_column("cluster") %>%
+    ## remove x cluster
+    filter(!str_detect(cluster, "X")) %>%
+    mutate(gene_overlaps = case_when(
+        grepl("IL6.*FOSB", found_genes) ~ "IL6 and FOSB",
+        grepl("IL6.*CHI3L1", found_genes) ~ "IL6 and CHI3L1",
+        grepl("CHI3L1*FOSB", found_genes) ~ "CHI3L1 and FOSB",
+        grepl("IL6.*FOSB.*CHI", found_genes) ~ "IL6, FOSB, and CHI3L1",
+        TRUE ~ found_genes
+        ))
+
+table(master_overlap$gene_overlaps)
+```
+
+
+FOSB analysis
+
+```{r}
+### How frequently is FOSB variable
+CommonGenes("FOSB", cluster_list, x_clust = T,1)
+### How frequentyly does FOSB cluster
+CommonGenes("FOSB", cluster_list, x_clust = F,1)
+### FOSB's top 10 most common clustering genes
+CommonGenes("FOSB", cluster_list, x_clust = F,11)
+
+
+```
+
+IL6 over SELE
+
+```{r}
+### How frequently is IL6 variable
+CommonGenes("IL6", cluster_list, x_clust = T,1)
+### How frequently is SELE variable
+CommonGenes("SELE", cluster_list, x_clust = T,1)
+
+### How frequentyly does IL6 cluster
+CommonGenes("IL6", cluster_list, x_clust = F,1)
+### How frequentyly does SELE cluster
+CommonGenes("SELE", cluster_list, x_clust = F,1)
+
+### IL6's top 10 most common clustering genes
+common_IL6 <- CommonGenes("IL6", cluster_list, x_clust = F,11)
+common_IL6
+### SELE's top 10 most common clustering genes
+common_SELE <- CommonGenes("SELE", cluster_list, x_clust = F,11)
+common_SELE
+
+cat(intersect(common_IL6$final_vect, common_SELE$final_vect))
+
+```
+
+PLA2G2A should be replaced wuth CHI3L1
+```{r}
+### How frequently is IL6 variable
+CommonGenes("CHI3L1", cluster_list, x_clust = T,1)
+### How frequently is SELE variable
+CommonGenes("PLA2G2A", cluster_list, x_clust = T,1)
+
+### How frequentyly does IL6 cluster
+CommonGenes("CHI3L1", cluster_list, x_clust = F,1)
+### How frequentyly does SELE cluster
+CommonGenes("PLA2G2A", cluster_list, x_clust = F,1)
+
+### IL6's top 10 most common clustering genes
+common_chi3l1 <- CommonGenes("CHI3L1", cluster_list, x_clust = F,11)
+common_chi3l1
+### SELE's top 10 most common clustering genes
+common_pla2g2a <- CommonGenes("PLA2G2A", cluster_list, x_clust = F,11)
+common_pla2g2a
+
+cat(intersect(common_chi3l1$final_vect, common_pla2g2a$final_vect))
+```
+
+Generate plots for all clusters, mark whether the have any of the following
+cluster markers:
+FOSB; HBB; PLA2G2A; CHI3L1; IL6; SELE
+```{r}
+marker_genes <- c("FOSB", "HBB", "CHI3L1", "IL6", "SELE", "PLA2G2A")
+clusters_of_interest <- ClusterGeneOverlaps(marker_genes,cluster_list) %>%
+    rownames_to_column("cluster") %>%
+    ## remove x cluster
+    filter(!str_detect(cluster, "X")) %>%
+    separate(., "cluster",into = c("r_names", "cluster"),sep = "-") %>%
+    left_join(., key_dat)
+
+zscores_of_tiss <- ZscoreProfilePuller(
+    r_name_vect = unique(clusters_of_interest$r_names),
+    "../../MARCC output/variance_profiles_kendall/")
+
+### Begin loop of data
+master_plot_list <- list()
+for (clust_ind in seq(nrow(clusters_of_interest))) {
+    cur_clust <- clusters_of_interest[clust_ind,]
+    temp_df <- zscores_of_tiss[[cur_clust$r_names]][,
+                                                    c("SUBJID",
+                                                      "SAMPID",
+                                                      cur_clust$cluster)]
+    temp_df <- left_join(temp_df, phen_dat, by = "SUBJID") %>%
+        left_join(., samp_dat, by = "SAMPID")
+    isch_plot <- ggplot(temp_df, aes_string(x = "SMTSISCH",
+                               y = cur_clust$cluster,
+                               color = "DTHHRDY_factor")) +
+        geom_point() +
+        scale_color_viridis(option = "C", discrete = T,end = .90) +
+        theme_classic() +
+        labs(title = cur_clust$r_names, subtitle = cur_clust$found_genes)
+    hardy_plot <- ggplot(temp_df, aes_string(x = "DTHHRDY_factor",
+                               y = cur_clust$cluster,
+                               color = "DTHHRDY_factor")) +
+        geom_sina() +
+        scale_color_viridis(option = "C", discrete = T,end = .90) +
+        theme_classic() #+
+        #labs(title = cur_clust$r_names, subtitle = cur_clust$found_genes)
+    
+    patch_plot <- isch_plot / hardy_plot +
+        plot_layout(guides = "collect") & theme(legend.position = "right")
+    master_plot_list[[paste0(cur_clust$r_names,"_",cur_clust$cluster)]] <-
+        patch_plot
+}
+
+pdf("data_out/possible_isch_hardy_clusters.pdf", height = 9, width = 9)
+for (cur_plot in master_plot_list) {
+    print(cur_plot)
+}
+dev.off()
+```
+
