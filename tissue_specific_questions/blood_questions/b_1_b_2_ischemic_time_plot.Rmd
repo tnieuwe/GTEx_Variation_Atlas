@@ -19,6 +19,7 @@ source("../../global_in/general_scripts.R")
 Data sources
 ```{r}
 samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+subj_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
 blood_profile <- ZscoreProfilePuller("whole_blood","../../MARCC output/variance_profiles_kendall/")[[1]]
 ```
 Combine data and make variable
@@ -26,21 +27,35 @@ Combine data and make variable
 joined_dat <- left_join(blood_profile, samp_dat) %>%
     mutate(blood_draw_time = ifelse(SMTSISCH > 0,
                                     "pre-mortem",
-                                    "post-mortem"))
+                                    "post-mortem")) %>%
+    left_join(., subj_dat) %>%
+    filter(!is.na(blood_draw_time))
 ```
 Make plots
 
 ```{r}
 b2_plot <- ggplot(joined_dat, aes(blood_draw_time, B.2)) +
     ggforce::geom_sina() +
-    theme_classic()
+    theme_classic() +
+    labs(x = "Blood Draw Time", y = "B.2 Z-score") +
+    theme(text = element_text(size=15))
 
 b1_plot <- ggplot(joined_dat, aes(blood_draw_time, B.1)) +
     ggforce::geom_sina() +
-    theme_classic()
+    theme_classic() +
+    labs( y = "B.1 Z-score") +
+    theme(text = element_text(size=15))
 
 plots <- b1_plot + b2_plot + patchwork::plot_annotation("B Cluster Compared to Pre or Post Mortem Blood Draws")
 
 plots
+```
+
+```{r}
+ggplot(joined_dat, aes(SMRIN, A, color = factor(DTHHRDY))) +
+    geom_point() +
+    theme_classic()
+
+lm(A ~ SMRIN, joined_dat) %>% summary()
 ```
 
