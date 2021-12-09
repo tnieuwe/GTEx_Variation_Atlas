@@ -201,6 +201,9 @@ analysis_out <- mutate(analysis_out,
 
 table(analysis_out$is_sig, analysis_out$term)
 
+hardy_result <- filter(analysis_out,
+                           str_detect(term, "DTHHRDY"))
+
 
 sig_hardy_result <- filter(analysis_out,
                            str_detect(term, "DTHHRDY"),
@@ -224,5 +227,43 @@ table(sig_hardy_result_no_brain$positive_o_neg, sig_hardy_result_no_brain$has_IL
 table(sig_hardy_result_no_brain$positive_o_neg, sig_hardy_result_no_brain$has_CHI3L1)
 table(sig_hardy_result_no_brain$positive_o_neg, sig_hardy_result_no_brain$has_PLA2G2A)
 
+```
+
+Upset plots
+All Clusters
+```{r}
+require(UpSetR)
+upset_genes <- c("SELE", "IL6",  "FOSB", "PLA2G2A", "CHI3L1")
+upset_list <- list()
+for (cur_upset_gene in upset_genes) {
+    upset_list[[cur_upset_gene]] <- which(str_detect(hardy_result$genes, cur_upset_gene))
+}
+upset(fromList(upset_list), order.by = "freq",text.scale = 1.2)
+```
+
+Sig clusters
+```{r}
+sig_upset_list <- list()
+for (cur_upset_gene in upset_genes) {
+    sig_upset_list[[cur_upset_gene]] <- which(str_detect(sig_hardy_result$genes, cur_upset_gene))
+}
+upset(fromList(sig_upset_list), order.by = "freq",text.scale = 1.3)
+```
+Brain clusters
+```{r}
+brain_upset_list <- list()
+for (cur_upset_gene in upset_genes) {
+    brain_upset_list[[cur_upset_gene]] <- which(str_detect(sig_hardy_result_brain$genes, cur_upset_gene))
+}
+upset(fromList(brain_upset_list), order.by = "freq",text.scale = 1.4)
+```
+
+No Brain
+```{r}
+no_brain_upset_list <- list()
+for (cur_upset_gene in upset_genes) {
+    no_brain_upset_list[[cur_upset_gene]] <- which(str_detect(sig_hardy_result_no_brain$genes, cur_upset_gene))
+}
+upset(fromList(no_brain_upset_list), order.by = "freq",text.scale = 1.4)
 ```
 
