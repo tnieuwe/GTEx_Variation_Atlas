@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(patchwork)
 source("../../global_in/general_scripts.R")
 ```
 
@@ -37,12 +38,18 @@ transverse_prof <- left_join(transverse_prof, colon_genes)
 Initial Plot
 
 ```{r}
-ggplot(transverse_prof, aes(D, A, color = ACTA2)) +
+stroma_plot <- ggplot(transverse_prof, aes(D, A, color = ACTA2)) +
     geom_point() + theme_classic() +
-    labs(x= "CLNTRN.D", y = "CLNTRN.A")
+    labs(x= "CLNTRN.D Zscore", y = "CLNTRN.A Zscore") + scale_color_viridis(name = "Normalized\nACTA2")
 
-ggplot(transverse_prof, aes(D, A, color = KRT20)) +
+epithelium_plot <- ggplot(transverse_prof, aes(D, A, color = KRT20)) +
     geom_point() + theme_classic() +
-    labs(x= "CLNTRN.D", y = "CLNTRN.A")
+    labs(x= "CLNTRN.D Zscore", y = "CLNTRN.A Zscore") + scale_color_viridis(name = "Normalized\nKRT20")
+
+combined_plot <- stroma_plot / epithelium_plot
+
+pdf("data_out/supplemental_GI_plot.pdf", height = 8, width = 6)
+combined_plot
+dev.off()
 ```
 
