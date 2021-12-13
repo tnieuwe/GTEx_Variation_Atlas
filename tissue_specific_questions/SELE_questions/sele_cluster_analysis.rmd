@@ -255,7 +255,7 @@ for (cur_tiss_ind in seq_along(all_no_brain_tissues)) {
     cur_tiss <- all_no_brain_tissues[[cur_tiss_ind]]
     ind <- no_brain_dat$tissue == cur_tiss
     cur_dat <- no_brain_dat[ind,]
-    plt <- ggplot(cur_dat, aes(DTHHRDY_factor, SELE_prof, color = )) +
+    plt <- ggplot(cur_dat, aes(DTHHRDY_factor, SELE_prof, color = factor(MHNPHYS4W))) +
         ggforce::geom_sina() +
         labs(title = paste("Tissue:", cur_tiss))
     print(plt)
