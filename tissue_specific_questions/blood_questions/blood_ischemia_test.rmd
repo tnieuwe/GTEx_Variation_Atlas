@@ -1,0 +1,65 @@
+---
+title: "All blood ischemic time"
+author: "Tim N"
+date: "12/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require("tidyverese")
+source("../../global_in/general_scripts.R")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+
+```{r}
+tissues <- c("adrenal_gland",
+             "artery_aorta",
+             "colon_transverse",
+             "colon_sigmoid",
+             "esophagus_muscularis",
+             "esophagus_mucosa",
+             "esophagus_gastroesophageal_junction",
+             "heart_atrial_appendage",
+             "heart_left_ventricle",
+             "minor_salivary_gland",
+             "stomach",
+             "testis"
+             )
+genes <- c("HBB", "HBA1", "HBA2", "HBD")
+
+
+blood_dat <- GenesFromTissues(tissues, genes_of_int = genes, key_dat, "../../Setup Code/output/")
+
+blood_dat$blood_score <- NewZScoreMaker(blood_dat)
+
+blood_dat <- left_join(blood_dat, samp_dat) %>%
+    left_join(., phen_dat) %>%
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)))
+
+```
+
+```{r}
+ggplot(blood_dat, aes(SMTSISCH, blood_score, color = DTHHRDY_factor)) + geom_point(alpha = 0.5)
+ggplot(blood_dat, aes(SMTSISCH, HBB, color = DTHHRDY_factor)) + geom_point(alpha = 0.5)
+
+```
+Linear mixed model
+```{r}
+require(lme4)
+require(lmerTest)
+mixed_blood_model <- lmer(blood_score ~ DTHHRDY_factor +
+         SMTSISCH + AGE + HGHT + WGHT + BMI +
+         factor(ETHNCTY) +
+         SEX +
+         factor(MHCANCERNM) +
+         SMRIN +
+         SMCENTER  + SMNABTCHD + factor(COHORT) + tissue + (1|SUBJID),
+     data = blood_dat)
+
+summary(mixed_blood_model)
+```
+
