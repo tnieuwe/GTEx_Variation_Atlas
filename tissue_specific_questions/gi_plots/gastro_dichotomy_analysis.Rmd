@@ -1,0 +1,48 @@
+---
+title: "gastro_cluster_dichotomy"
+author: "Tim N"
+date: "12/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+source("../../global_in/general_scripts.R")
+```
+
+```{r}
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+death_dat <- read.csv("../../global_in/gtex_COD_phenotype.csv")
+```
+
+
+
+```{r}
+prof_list <- ZscoreProfilePuller("colon_transverse",
+                       location = "../../MARCC output/variance_profiles_kendall/")
+transverse_prof <- prof_list$colon_transverse %>%
+    left_join(., phen_dat) %>%
+    left_join(., samp_dat)
+
+colon_genes <- GenesFromTissues("colon_transverse", c("ACTA2", "KRT20"), key_dat, "../../Setup Code/output/")
+
+transverse_prof <- left_join(transverse_prof, colon_genes)
+```
+
+Initial Plot
+
+```{r}
+ggplot(transverse_prof, aes(D, A, color = ACTA2)) +
+    geom_point() + theme_classic() +
+    labs(x= "CLNTRN.D", y = "CLNTRN.A")
+
+ggplot(transverse_prof, aes(D, A, color = KRT20)) +
+    geom_point() + theme_classic() +
+    labs(x= "CLNTRN.D", y = "CLNTRN.A")
+```
+
