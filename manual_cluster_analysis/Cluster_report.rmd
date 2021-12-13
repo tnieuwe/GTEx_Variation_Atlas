@@ -211,3 +211,12 @@ ggplot(sex_dat, aes(sex_count, SEX, fill = SEX)) +
 ggsave("sex_count.pdf", height = 3, width = 8 )
 ```
 
+```{r}
+only_x <- read.csv("manual_curation.csv") %>%
+    filter(str_detect(label, "X")) %>% 
+    left_join(.,key_dat) %>%
+    mutate(n_genes = str_count(genes, ";") + 1) %>%
+    select(abrreviated, official_name, n_non_clustering_variable_genes = n_genes, genes)
+write.csv(only_x,"data_out/non_clustering_high_variance_genes.csv")
+```
+
