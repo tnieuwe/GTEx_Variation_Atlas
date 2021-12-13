@@ -2,7 +2,7 @@
 ### The purpose of this script is to scrape the required statistics
 ### from MARCC for the paper this includes
 
-### Load functions and libararies
+### Load functions and libraries
 library(DESeq2)
 
 AllGeneClusterPuller <- function(location, x_clust = TRUE){
@@ -65,17 +65,19 @@ for (tiss_ind in seq_along(all_tissues)) {
     vsdMeanFiltered <- get(paste0(cur_tiss,"VSDMeanFiltered"))
     v <- apply(assay(vsdMeanFiltered),1,var)
     variance_thresh <- quantile(v, .98)
+    ## N of samples
+    N_of_samples <- ncol(vsdMeanFiltered)
     ## N of filtered genes
     mean_filtered_genes <- nrow(gtabMeanFiltered)
     ## Var filtered genes
     all_var_genes <- length(unlist(cluster_list[[cur_tiss]]))
     ## Cluster genes lsit
     all_clustered_genes <- length(unlist(cluster_list_no_x[[cur_tiss]]))
-    new_row <- cbind(cur_tiss, mean_filtered_genes,
+    new_row <- cbind(cur_tiss, N_of_samples,  mean_filtered_genes,
                      all_var_genes, all_clustered_genes, variance_thresh)
     data_out <- rbind(data_out, new_row)
 }
-colnames(data_out) <- c("tissue", "mean_filtered_genes",
+colnames(data_out) <- c("tissue", "N_of_samples", "mean_filtered_genes",
                         "variance_filtered_genes", "all_clustered_genes",
                         "variance_threshold")
 
