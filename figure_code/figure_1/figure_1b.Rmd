@@ -1,0 +1,80 @@
+---
+title: "figure_1b"
+author: "Tim N"
+date: "12/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(pheatmap)
+library(readxl)
+source("../../global_in/general_scripts.R")
+```
+
+This figure was originally created in the file "Cluster_report.rmd" the code has been adapted from that file.
+
+
+```{r}
+## Load durrent manual curation
+excel_dat <- read_excel("../../manual_cluster_analysis/manual_curation_12_14_21.xlsx")
+```
+
+Filter down current names and cases to a reasonable number
+```{r}
+
+excel_filt <- excel_dat %>%
+    mutate(generalized_cluster = case_when(
+        generalized_cluster == "unsolved" ~ "unknown",
+        generalized_cluster == "unknown" ~ "Unknown",
+        generalized_cluster == "Immuno" ~ "Immunoglobulin",
+        generalized_cluster == "new_contamination" ~ "Contamination",
+        generalized_cluster == "classic_contamination" ~ "Contamination",
+        generalized_cluster == "SELE cluster" ~ "Endothelial Activation",
+        generalized_cluster == "Inflammation" ~ "Other",
+        generalized_cluster == "Histones" ~ "Other",
+        generalized_cluster == "Immune" ~ "Other",
+        generalized_cluster == "Immuno/Mitochondria" ~ "Other",
+        generalized_cluster == "FOS/FOSB" ~ "Other",
+        T ~ generalized_cluster),
+    generalized_cluster = tools::toTitleCase(generalized_cluster),
+    `Certainty (High, medium, low)` =
+        tools::toTitleCase(`Certainty (High, medium, low)`)
+    ) %>%
+    filter(generalized_cluster != "X CLUST")
+
+excel_filt$generalized_cluster <- factor(excel_filt$generalized_cluster,
+                                         levels = names(sort(table(excel_filt$generalized_cluster))))
+```
+
+Get count data
+```{r}
+counted_dat <- excel_filt %>% group_by(generalized_cluster,
+                                       `Certainty (High, medium, low)`) %>% dplyr::count() %>%
+    mutate(
+    n = ifelse(generalized_cluster == "SEX", n/2, n)) %>%
+    rename(`Certainty (High, medium, low)` = "Certainty")
+
+## Reorder data
+
+```
+
+Plot Data
+```{R}
+require(viridisLite)
+ggplot(counted_dat, aes(n, generalized_cluster, fill = Certainty)) +
+    geom_bar(stat="identity") +
+    xlim(0, 150) +
+   # geom_text(aes(label=n), hjust=-.05, size=3.5)+
+    theme_minimal() +
+    scale_fill_viridis(discrete = T) + 
+    theme(legend.position = "top") +
+    labs( y = "Cluster Type", x= "N of Clusters")
+
+ggsave("figures_out/figure_1b.pdf",height = 6, width = 6)
+```
+
