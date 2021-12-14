@@ -72,7 +72,13 @@ load("output/gtex-gene-counts-v8.rda")
 #                   "spleen",
                 #   "pancreas",
 #                   "pituitary"
-                # "heart_left_ventricle")
+                # "heart_left_ventricle",
+                #"testis",
+                #"esophagus_gastroesophageal_junction",
+                #"esophagus_mucosa",
+                #"esophagus_muscularis",
+                #"ovary"
+                #"uterus")
 # tissue_names = c("Lung",
 #                  "Artery - Coronary",
 #                  "Kidney - Cortex",
@@ -96,11 +102,18 @@ load("output/gtex-gene-counts-v8.rda")
                 # "Spleen",
                 # "Pancreas",
                 # "Pituitary"
-                # "Heart - Left Ventricle")
+                # "Heart - Left Ventricle"
+                #"Testis",
+                #"Esophagus - Gastroesophageal Junction",
+                #"Esophagus - Mucosa",
+                #"Esophagus - Muscularis",
+                #"Ovary"
+                #"Uterus"
+                #"Vagina")
 
 
-tissue_list = c("heart_left_ventricle")
-tissue_names = c("Heart - Left Ventricle")
+tissue_list = c("vagina")
+tissue_names = c("Vagina")
 
 for (j in seq(length(tissue_list))) {
     cur_tiss <- tissue_list[j]
