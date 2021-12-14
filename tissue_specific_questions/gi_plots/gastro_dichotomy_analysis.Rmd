@@ -42,14 +42,24 @@ stroma_plot <- ggplot(transverse_prof, aes(D, A, color = ACTA2)) +
     geom_point() + theme_classic() +
     labs(x= "CLNTRN.D Zscore", y = "CLNTRN.A Zscore") + scale_color_viridis(name = "Normalized\nACTA2")
 
+stroma_plot_2 <- ggplot(transverse_prof, aes(D,  ACTA2)) +
+    geom_point() + theme_classic() +
+    labs(x= "CLNTRN.D Zscore", y = "Normalized ACTA2") 
+
 epithelium_plot <- ggplot(transverse_prof, aes(D, A, color = KRT20)) +
     geom_point() + theme_classic() +
     labs(x= "CLNTRN.D Zscore", y = "CLNTRN.A Zscore") + scale_color_viridis(name = "Normalized\nKRT20")
 
-combined_plot <- stroma_plot / epithelium_plot
+combined_plot <- (epithelium_plot + stroma_plot) / stroma_plot_2
 
-pdf("data_out/supplemental_GI_plot.pdf", height = 8, width = 6)
+pdf("data_out/supplemental_GI_plot.pdf", height = 8, width = 10)
 combined_plot
 dev.off()
+```
+Kendall correlation tests
+```{r}
+result <- cor.test(transverse_prof$D, transverse_prof$ACTA2)
+result
+result$p.value
 ```
 
