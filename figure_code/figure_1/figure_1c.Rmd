@@ -1,0 +1,55 @@
+---
+title: "figure_1c"
+author: "Tim N"
+date: "12/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(data.table)
+source("../../global_in/general_scripts.R")
+```
+
+## Load phenotype data
+```{r}
+pheno <- fread("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt") %>%
+    mutate(SEX = ifelse(SEX ==1 , "Male", "Female"))
+```
+
+
+
+Tissue for figure
+```{r}
+tiss = "stomach"
+```
+
+Find XIST cluster 
+```{r}
+cur_clusts <- GeneClusterPuller(tiss, "../../MARCC output/variance_genes_kendall/")[[1]]
+
+xist_clust <- unlist(lapply(cur_clusts, function(x){"XIST" %in% x}))
+base_sex_clust <- str_sub(names(xist_clust)[xist_clust],1,1)
+```
+
+Pull profiles and join with phenotype
+```{r}
+cur_profiles <- ZscoreProfilePuller(tiss, "../../MARCC output/variance_profiles_kendall/")[[1]]
+for_plot <- left_join(cur_profiles, pheno)
+```
+
+
+```{r}
+ggplot(for_plot, aes_string(x = paste0(base_sex_clust,".1"),
+                     y = paste0(base_sex_clust,".2"),
+                     color ="SEX")) +
+    geom_point() +
+    scale_color_viridis(discrete = T, option = "C",end = .8) +
+    theme_classic()
+ggsave("figures_out//figure_1c.pdf", height =5, width = 5)
+```
+

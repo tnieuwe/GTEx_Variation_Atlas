@@ -1,0 +1,63 @@
+---
+title: "figure_1d"
+author: "Tim N"
+date: "12/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+require("tidyverse")
+source("../../global_in/general_scripts.R")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+```
+
+This code is taken primarily from "blood_ischemia_test.rmd" on 12/14/2021. All further modifications are unique to this version of the code for plotting the figure. 
+```{r}
+tissues <- c("adrenal_gland",
+             "artery_aorta",
+             "colon_transverse",
+             "colon_sigmoid",
+             "esophagus_muscularis",
+             "esophagus_mucosa",
+             "esophagus_gastroesophageal_junction",
+             "heart_atrial_appendage",
+             "heart_left_ventricle",
+             "minor_salivary_gland",
+             "stomach",
+             "testis"
+             )
+genes <- c("HBB", "HBA1", "HBA2", "HBD")
+
+
+blood_dat <- GenesFromTissues(tissues, genes_of_int = genes, key_dat, "../../Setup Code/output/")
+
+blood_dat$blood_score <- NewZScoreMaker(blood_dat)
+
+blood_dat <- left_join(blood_dat, samp_dat) %>%
+    left_join(., phen_dat) %>%
+    mutate(DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0))) %>%
+    filter(!is.na(DTHHRDY_factor))
+
+```
+
+Make plot
+```{r}
+require(viridis)
+ggplot(blood_dat) +
+    geom_point(aes(SMTSISCH, blood_score, color = DTHHRDY_factor),
+               alpha = 0.5) +
+    geom_smooth(aes(SMTSISCH, blood_score),method = "lm")+
+    theme_classic()+
+    scale_color_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score") +
+    labs(y = "Hemoglobin Score", x = "Sample Ischemic Time (Minutes)")
+
+ggsave("figures_out/figure_1d.pdf", height =5, width = 5)
+```
+
