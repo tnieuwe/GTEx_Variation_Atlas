@@ -1,0 +1,49 @@
+---
+title: "Figure_1_a_tim_version"
+author: "Tim N"
+date: "12/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(pheatmap)
+source("../../global_in/general_scripts.R")
+```
+
+Load stomach data Z-scores
+```{r}
+stomach_dat <- ZscoreProfilePuller("stomach", "../../MARCC output/variance_profiles_kendall/")[[1]]
+```
+
+Make correlation matrix
+```{r}
+pre_cor_df <- stomach_dat[,-1:-2]
+cor_mat <- cor(pre_cor_df,method = "kendall")
+
+```
+Load genes for counts
+```{r}
+stomach_genes <- GeneClusterPuller("stomach", "../../MARCC output/variance_genes_kendall/")[[1]][-1]
+
+```
+
+
+Make heatmap
+```{r}
+num_mat <- matrix("", ncol(cor_mat), ncol(cor_mat))
+for (clust_ind in seq(ncol(cor_mat))) {
+    cur_clust <- colnames(cor_mat)[clust_ind]
+    cur_n <- length(stomach_genes[[cur_clust]])
+    num_mat[clust_ind, clust_ind] <- as.character(cur_n)
+}
+pheatmap(cor_mat, display_numbers = num_mat,
+         filename = "figures_out/figure_1a.pdf",
+         width = 6,
+         height = 5)
+```
+
