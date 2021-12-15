@@ -20,9 +20,8 @@ This code was taken from sele_analysis.rmd
 ```{r}
 require(viridis)
 require(patchwork)
-SELE_associated_genes <- head(CommonGenes("SELE", cluster_list = cluster_list,x_clust = F), 11)
-how_many_SELE <- SELE_associated_genes$Freq[1]
-SELE_associated_genes <- SELE_associated_genes[-1,]
+SELE_associated_genes <- head(CommonGenes("SELE", cluster_list = cluster_list,x_clust = F), 10)
+
 SELE_associated_genes$common_genes <- factor(SELE_associated_genes$final_vect,
                                              levels = rev(SELE_associated_genes$final_vect))
  ggplot(SELE_associated_genes, aes(common_genes, Freq)) +
@@ -31,7 +30,6 @@ SELE_associated_genes$common_genes <- factor(SELE_associated_genes$final_vect,
     coord_flip() +
     theme_minimal() +
     labs(title = "Genes that cluster with SELE",
-         subtitle = paste("Out of", how_many_SELE,"clusters"),
          y = "N of clusters with SELE",
          x = "")
 ggsave("figure_out/figure_2b.pdf",height = 5, width = 6)
@@ -44,8 +42,6 @@ ggsave("figure_out/figure_2b.pdf",height = 5, width = 6)
 PLA2G2A_associated_genes <- head(CommonGenes("PLA2G2A", cluster_list = cluster_list,x_clust = F), 10)
 PLA2G2A_associated_genes$common_genes <- factor(PLA2G2A_associated_genes$final_vect,
                                              levels = rev(PLA2G2A_associated_genes$final_vect))
-how_many_PLA2G2A <- PLA2G2A_associated_genes$Freq[1]
-PLA2G2A_associated_genes <- PLA2G2A_associated_genes[-1,]
 ggplot(PLA2G2A_associated_genes, aes(common_genes, Freq)) +
     geom_col(fill = viridis::inferno(4)[3]) +
     geom_text(aes(label = Freq), position=position_dodge(width=0.9),hjust = 1.3) +
@@ -54,7 +50,6 @@ ggplot(PLA2G2A_associated_genes, aes(common_genes, Freq)) +
     scale_x_discrete(position = "top") +
     theme_minimal() +
     labs(title = "Genes that cluster with PLA2G2A",
-         subtitle = paste("Out of", how_many_PLA2G2A,"clusters"),
          y = "N of clusters with PLA2G2A",
          x = "")
 
