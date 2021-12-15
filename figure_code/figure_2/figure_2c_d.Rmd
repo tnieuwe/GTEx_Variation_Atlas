@@ -1,0 +1,101 @@
+---
+title: "Figure_2c_d"
+author: "Tim N"
+date: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(data.table)
+library(viridis)
+source("../../global_in/general_scripts.R")
+```
+
+## Load phenotype data
+```{r}
+pheno <- fread("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt") %>%
+    mutate(SEX = ifelse(SEX ==1 , "Male", "Female"))
+```
+
+Find all non-brain clusters that include SELE or PLA2G2A
+```{r}
+genes_of_int <- c("PLA2G2A", "SELE")
+all_tiss_all_clust <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/",
+                                           x_clust = F)
+gene_finder_df <- NULL
+for (cur_tiss_ind in seq_along(all_tiss_all_clust)) {
+    cur_tiss_clust <- all_tiss_all_clust[[cur_tiss_ind]]
+    cur_tiss_name <- names(all_tiss_all_clust)[cur_tiss_ind]
+    for (cur_clust_ind in seq_along(cur_tiss_clust)) {
+        cur_clust <- cur_tiss_clust[[cur_clust_ind]]
+        cur_clust_name <- names(cur_tiss_clust)[cur_clust_ind]
+        overlap <- genes_of_int %in% cur_clust
+        names(overlap) <- genes_of_int
+        cur_dat <- c(tissue = cur_tiss_name, cluster = cur_clust_name)
+        new_row <- cbind(t(as.data.frame(cur_dat)), t(as.data.frame(overlap))) %>%
+            as.data.frame()
+        new_row[3:4] <- as.logical(new_row[3:4])
+        gene_finder_df<- rbind(gene_finder_df, new_row)
+    }
+    
+}
+
+no_brain_dat <- filter(gene_finder_df, PLA2G2A == TRUE | SELE == TRUE,
+                       !str_detect(tissue, "brain"))
+```
+
+
+```{r}
+profiles_for_tissues <- ZscoreProfilePuller(no_brain_dat$tissue,location = "../../MARCC output/variance_profiles_kendall/")
+
+long_results_out <- NULL
+for (clust_ind in seq(nrow(no_brain_dat))) {
+    cur_tiss <- no_brain_dat$tissue[clust_ind]
+    cur_clust <- no_brain_dat$cluster[clust_ind]
+    cur_dat <- profiles_for_tissues[[cur_tiss]][,c("SUBJID", "SAMPID", cur_clust)]
+    colnames(cur_dat)[3] <- "zscore"
+    temp_res <- cbind(cur_dat, no_brain_dat[clust_ind,])
+    long_results_out <- rbind(long_results_out, temp_res)
+}
+
+plot_dat <- left_join(long_results_out, pheno) %>%
+    mutate(hardy_bin = case_when(
+        DTHHRDY %in% c(1,2) ~ "1/2 Hardy",
+        DTHHRDY %in% c(4,0) ~ "4/0 Hardy",
+        TRUE ~ "drop_hardy"
+    )) %>%
+    filter(hardy_bin != "drop_hardy")
+```
+
+SELE plot
+```{r}
+plot_dat %>% filter(SELE == TRUE) %>%
+    ggplot(., aes(hardy_bin, zscore)) +
+    ##ggforce::geom_sina(aes(color = hardy_bin)) +
+   geom_violin(aes(fill = hardy_bin)) +
+    geom_boxplot(outlier.alpha = 1, width = .5, color = "grey40") +
+    theme_classic() +
+    scale_fill_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score") +
+    labs(y = "SELE Cluster Z-scores")
+
+ggsave("figure_out/figure_2d.pdf", height = 4, width = 5)
+```
+
+PLA2g2a
+```{r}
+plot_dat %>% filter(PLA2G2A == TRUE) %>%
+    ggplot(., aes(hardy_bin, zscore)) +
+    #ggforce::geom_sina(alpha = .5, aes(color = hardy_bin)) +
+    geom_violin(aes(fill = hardy_bin)) +
+    geom_boxplot(outlier.alpha = 1, width = .5, color = "grey40") +
+    theme_classic() +
+    scale_fill_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score") +
+    labs(y = "PLA2G2A Cluster Z-scores")
+ggsave("figure_out/figure_2c.pdf", height = 4, width = 5)
+```
+
