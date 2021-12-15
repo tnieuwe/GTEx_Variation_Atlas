@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(data.table)
+library(viridis)
 source("../../global_in/general_scripts.R")
 ```
 
@@ -26,6 +27,7 @@ pheno <- fread("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS
 Tissue for figure
 ```{r}
 tiss = "stomach"
+#tiss = "artery_coronary"
 ```
 
 Find XIST cluster 
@@ -34,6 +36,7 @@ cur_clusts <- GeneClusterPuller(tiss, "../../MARCC output/variance_genes_kendall
 
 xist_clust <- unlist(lapply(cur_clusts, function(x){"XIST" %in% x}))
 base_sex_clust <- str_sub(names(xist_clust)[xist_clust],1,1)
+xist_clust_string <- names(xist_clust)[xist_clust]
 ```
 
 Pull profiles and join with phenotype
@@ -44,12 +47,15 @@ for_plot <- left_join(cur_profiles, pheno)
 
 
 ```{r}
-ggplot(for_plot, aes_string(x = paste0(base_sex_clust,".1"),
-                     y = paste0(base_sex_clust,".2"),
+ggplot(for_plot, aes_string(x = "SEX",
+                     y = xist_clust_string,
                      color ="SEX")) +
-    geom_point() +
+    ggforce::geom_sina() +
     scale_color_viridis(discrete = T, option = "C",end = .8) +
-    theme_classic()
-ggsave("figures_out//figure_1c.pdf", height =5, width = 5)
+    theme_classic() +
+    theme(legend.position = "none") +
+    labs(y = "XIST Z-score")
+ggsave("figures_out/figure_1c.pdf", height =5, width = 2)
+#ggsave("figures_out/figure_1c_coronary.pdf", height =5, width = 2)
 ```
 
