@@ -1,0 +1,46 @@
+---
+title: "figure_3c"
+author: "Tim N"
+date: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+require("tidyverse")
+require("viridis")
+source("../../global_in/general_scripts.R")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+pheno_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt")
+```
+
+Code originally from:
+```{r}
+muscle_prof <- ZscoreProfilePuller("muscle_skeletal",
+                                   "../../MARCC output/variance_profiles_kendall/")[[1]] %>%
+    left_join(., samp_dat) %>%
+    left_join(., pheno_dat) %>%
+    mutate(`Hardy Score` = factor(DTHHRDY, levels = c(1,2,3,4,0))) %>%
+    filter(!is.na(`Hardy Score`))
+```
+
+```{r}
+ggplot(muscle_prof, aes(SMTSISCH, E.2, color = `Hardy Score`)) +
+    geom_point()+
+    theme_classic()+
+    scale_color_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score")
+ggsave("figure_out/figure_3c_v1.pdf", height = 5, width = 6)
+```
+
+```{r}
+ggplot(muscle_prof, aes(`Hardy Score`, E.2, color = `Hardy Score`)) +
+    ggforce::geom_sina()+
+    theme_classic()+
+    theme(legend.position = "none") +
+    scale_color_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score")
+ggsave("figure_out/figure_3c_v2.pdf", height = 5, width = 6)
+```

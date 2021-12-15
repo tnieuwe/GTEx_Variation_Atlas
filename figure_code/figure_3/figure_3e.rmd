@@ -1,0 +1,140 @@
+---
+title: "figure_3e"
+author: "Tim N"
+date: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(RColorBrewer)
+library(lme4)
+library(lmerTest)
+source("../../global_in/general_scripts.R")
+```
+
+Loading important data
+```{r}
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+samp_dat <- data.table::fread("../../global_in/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+```
+
+Common brain mitchondrial genes
+```{r}
+cluster_mito <- c("MTCO3P12",
+"MTCO1P12",
+"MTND1P23",
+"MTND2P28",
+"MT−TS1",
+"MTND4P12",
+"MT−TE",
+"MTATP8P1",
+"MTCO2P12",
+"MT−TY",
+"MT−TL2",
+"MT−TP")
+```
+
+
+
+Preliminary analysis on brain mitochondrial Z-scores to better understand
+possible drivers. Only subject wide phenotypes first
+```{r}
+brain_profs <- ZscoreProfilePuller(r_name_vect =  c("brain_cerebellum",
+                                                    "brain_cortex",
+                                                    "brain_substantia_nigra"),
+                                   location = "../../MARCC output/variance_profiles_kendall/")
+#Analyze cerebellum and cortex
+cereb_mito <- brain_profs$brain_cerebellum %>% select(SUBJID, cereb_samp = SAMPID, cereb_mito = A)
+cereb_samp <- brain_profs$brain_cerebellum %>% select(SUBJID, SAMPID, cereb_mito = A)
+cortex_mito <- brain_profs$brain_cortex %>% select(SUBJID,corex_sam = SAMPID, cortex_mito = A)
+cortex_samp <- brain_profs$brain_cortex %>% select(SUBJID, SAMPID, cortex_mito = A)
+
+join_brain <- left_join(cereb_mito,cortex_mito)%>%
+    left_join(.,phen_dat)
+
+```
+
+Include the sample data in the analysis
+```{r}
+cereb_samp <- left_join(cereb_samp,phen_dat) %>% left_join(., samp_dat) %>%
+    mutate(SMGEBTCHD = as.Date(SMGEBTCHD,format = "%m/%d/%Y"))
+cortex_samp<- left_join(cortex_samp,phen_dat) %>% left_join(., samp_dat)
+```
+
+Load in all Z-scores from the brain related to mitochondria
+```{r}
+## Get all brain mito clusters labeled
+clusters_to_pull <- NULL
+## For each tissue
+for (tiss_ind in seq_along(cluster_list)) {
+    current_tiss <- names(cluster_list)[tiss_ind]
+    ## Tissue must be brain
+    if (!str_detect(current_tiss, "brain")) {
+        next()
+    }
+    current_tiss_clust <- cluster_list[[tiss_ind]]
+    ## For each cluster in a tissue
+    for (cluster_ind in seq_along(current_tiss_clust)) {
+        cluster_name <- names(current_tiss_clust)[cluster_ind]
+        cur_genes <- current_tiss_clust[[cluster_ind]]
+        ## Excluding X clusters
+        if (cluster_name == "X") {
+            next()
+        }
+        ## If mitochondria genes are found in the cluster, mark it to be pulled
+        if (any(cluster_mito %in% cur_genes)) {
+            clusters_to_pull<- rbind(clusters_to_pull,
+                                     cbind(current_tiss,cluster_name))
+        }
+        
+    }
+}
+
+## Pull said clusters into a list
+profs_mito <- ZscoreProfilePuller(r_name_vect = clusters_to_pull[,1],
+                                  "../../MARCC output/variance_profiles_kendall/")
+
+for_model <- NULL
+## Pull specific clusters from the ZscoreProfilePuller list
+for (row_ind in seq(nrow(clusters_to_pull))) {
+    ## Subset out tissue
+    current_df <- profs_mito[[clusters_to_pull[row_ind,1]]]
+    ## Subset out from table required data
+    new_rows <- cbind(current_df[,c("SUBJID", "SAMPID", clusters_to_pull[row_ind,2])],
+             clusters_to_pull[row_ind,1])
+    colnames(new_rows) <- c("SUBJID", "SAMPID", "mito_cluster", "tissue")
+    ## Join the data for the output model
+    for_model <- rbind(for_model, new_rows)
+}
+
+## Prepare data for generalized linear mixed model
+for_model <- left_join(for_model, samp_dat) %>%
+    left_join(.,phen_dat)
+## Make initial simple linear model, random effects are always tissue and SUBJID
+simple_model <- model_out <- lmer(mito_cluster ~ SMRIN + (1|tissue) + (1|SUBJID), data = for_model)
+
+## Make a slightly more complex model to see in SMRIN is the main contributor
+model_out <- lmer(mito_cluster ~ SMRIN + SMTSISCH + SEX + AGE + (1|tissue) + (1|SUBJID), data = for_model)
+summary(model_out)
+
+anova(simple_model, model_out)
+## SMRIN is the main contributor
+
+ggplot(for_model, aes(SMRIN, mito_cluster)) +
+    geom_hex() +
+    geom_density_2d(color = "grey")+
+    theme_minimal() +
+    theme(text = element_text(size = 15), legend.position = "top") +
+    scale_fill_continuous(name = "Sample\nDensity") +
+    labs(x = "Sample RIN", y = "Mitochondrail Cluster Z-score")
+ggsave("figure_out/figure_3e.pdf", height = 5, width = 6.5)
+```

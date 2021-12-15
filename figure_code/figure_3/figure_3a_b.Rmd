@@ -1,0 +1,40 @@
+---
+title: "figure_3a_b"
+author: "Tim N"
+date: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+source("../../global_in/general_scripts.R")
+```
+
+```{r}
+tissues <- c("artery_coronary", "esophagus_muscularis")
+profiles <- ZscoreProfilePuller(tissues, "../../MARCC output/variance_profiles_kendall/")
+```
+
+
+```{r}
+ggplot(profiles$artery_coronary, aes(F)) +
+     geom_histogram(fill = "white", color = "black",
+                   bins = 30) +
+    theme_bw() +
+    labs(x = "ARTCRN Z-score (Heart Muscle)")
+ggsave(filename = "figure_out/fig_3a.pdf", width = 5, height = 5)
+```
+
+```{r}
+ggplot(profiles$esophagus_muscularis, aes(B)) +
+    geom_histogram(fill = "white", color = "black",
+                   bins = 30) +
+    theme_bw() +
+    labs(x = "ESPMSL.B Z-score (Epithelial Cells)")
+ggsave(filename = "figure_out/fig_3b.pdf", width = 5, height = 5)
+```
+

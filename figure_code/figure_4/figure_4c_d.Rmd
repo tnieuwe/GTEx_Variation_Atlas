@@ -1,0 +1,104 @@
+---
+title: "figure_4c_d"
+author: "Tim N"
+date: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(DESeq2)
+key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
+source("../../global_in/general_scripts.R")
+phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
+    mutate(Race_Character = case_when(
+        RACE == 1 ~ "Asian",
+        RACE == 2 ~ "Black or African American",
+        RACE == 3 ~ "White", 
+        RACE == 4 ~ "American Indian or Alaska Native",
+        RACE == 98 ~ "Not Reported",
+        RACE == 99 ~ "Unknown"
+    ))
+```
+
+
+```{r}
+dat <- GenesFromTissues(tiss_of_int = "",
+                       genes_of_int = c("GSTM1", "MTND1P23"),
+                       vst_location = "../../Setup Code/output/",
+                       run_all_available = TRUE,
+                       key_dat = key_dat)
+```
+
+Start with adipose
+```{r}
+
+all_dat <- left_join(dat, phen_dat) %>%
+    filter(Race_Character != "Unknown") %>%
+    mutate(above_GSTM_thresh = GSTM1 > 6.2,
+           above_MTND_thresh = MTND1P23 > 10)
+
+
+gstm_table <- table(all_dat$above_GSTM_thresh, all_dat$Race_Character) %>%
+    as.data.frame()
+gstm_freqs <- gstm_table$Freq
+top = 13.2
+bot = 2.8
+
+ggplot(all_dat, aes(Race_Character, GSTM1, color = Race_Character)) +
+    ggforce::geom_sina() +
+    annotate("text",
+             y = c(bot, top,
+                  bot, top,
+                  bot, top,
+                  bot, top),
+             x= c(1.2, 1.2,
+                  2.2, 2.2,
+                  3.2, 3.2,
+                  4.2, 4.2),
+             label = c(gstm_freqs[1], gstm_freqs[2],
+                       gstm_freqs[3], gstm_freqs[4],
+                       gstm_freqs[5],gstm_freqs[6],
+                       gstm_freqs[7],gstm_freqs[8])) +
+    scale_color_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    geom_hline(yintercept = 6.2) +
+    theme_bw() +
+    theme(legend.position = "none")
+ggsave("figure_out/figure_4c.pdf", height = 5, width = 6)
+```
+
+
+```{r}
+
+mt_table <- table(all_dat$above_MTND_thresh, all_dat$Race_Character) %>%
+    as.data.frame()
+mt_freqs <- mt_table$Freq
+top = 17
+bot = 4
+ggplot(all_dat, aes(Race_Character, MTND1P23, color = Race_Character)) +
+    ggforce::geom_sina() +
+    annotate("text",
+             y = c(bot, top,
+                  bot, top,
+                  bot, top,
+                  bot, top),
+             x= c(1.2, 1.2,
+                  2.2, 2.2,
+                  3.2, 3.2,
+                  4.2, 4.2),
+             label = c(mt_freqs[1], mt_freqs[2],
+                       mt_freqs[3], mt_freqs[4],
+                       mt_freqs[5], mt_freqs[6],
+                       mt_freqs[7], mt_freqs[8])) +
+    scale_color_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    geom_hline(yintercept = 10) +
+    theme_bw() +
+    theme(legend.position = "none")
+
+ggsave("figure_out/figure_4d.pdf", height = 5, width = 6)
+
+```

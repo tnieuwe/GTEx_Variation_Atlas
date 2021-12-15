@@ -1,0 +1,50 @@
+---
+title: "figure_3d"
+author: "Tim N"
+date: "12/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+require("tidyverse")
+source("../../global_in/general_scripts.R")
+pheno_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv")
+```
+
+Make diabetic data
+```{r}
+pheno_dat <- mutate(pheno_dat, diabetes_status =  case_when(
+    MHT1D == 1 & MHT2D == 1 ~ "Type I & II",
+    MHT1D == 1 ~ "Type I",
+    MHT2D == 1 ~ "Type II",
+    MHT1D == 99 | MHT2D == 99 ~ "Unknown",
+    TRUE ~ "Non-Diabetic"
+    ),
+    diabetes_status = factor(diabetes_status,
+                             levels = c("Non-Diabetic", "Type II", "Type I","Type I & II", "Unknown" ))
+) %>%
+    filter(diabetes_status != "Unknown")
+```
+
+Load and join panreas data
+```{r}
+pancreas_prof <- ZscoreProfilePuller("pancreas",
+                                   "../../MARCC output/variance_profiles_kendall/")[[1]] %>%
+    left_join(., pheno_dat) %>%
+    filter(!is.na(diabetes_status))
+```
+
+```{r}
+ggplot(pancreas_prof, aes(diabetes_status, y= A)) +
+    ggforce::geom_sina() +
+    theme_classic() + 
+    stat_summary(fun = median, fun.min = median, fun.max = median,
+                 geom = "crossbar", width = 0.5, color = "red") +
+    labs(y = "PNCREAS.A (Insulin Cluster)", x = "Diabetes Status") 
+ggsave("figure_out/figure_3d.pdf", height = 5, width = 6)
+```
+
