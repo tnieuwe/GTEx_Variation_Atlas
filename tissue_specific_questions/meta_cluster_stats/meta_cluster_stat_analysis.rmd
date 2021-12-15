@@ -267,3 +267,44 @@ for (cur_upset_gene in upset_genes) {
 upset(fromList(no_brain_upset_list), order.by = "freq",text.scale = 1.4)
 ```
 
+PLAG2GA and CHI3L1 quick questions
+```{r}
+### How many clusters are they in?
+## PLA2G2A
+table(hardy_result$has_PLA2G2A)
+## CHI3L1
+table(hardy_result$has_CHI3L1)
+## Hhow many times are they sig with hardy score
+## PLA2G2A
+table(sig_hardy_result$has_PLA2G2A)
+## CHI3L1
+table(sig_hardy_result$has_CHI3L1)
+## Sig direction
+## PLA2G2A
+table(sig_hardy_result$has_PLA2G2A, sig_hardy_result$positive_o_neg)
+## CHI3L1
+table(sig_hardy_result$has_CHI3L1, sig_hardy_result$positive_o_neg)
+```
+SELE and IL6 quick questions
+```{r}
+### How many clusters are they in?
+## SELE
+table(hardy_result$has_SELE)
+## IL6
+table(hardy_result$has_IL6)
+## Hhow many times are they sig with hardy score
+## SELE
+table(sig_hardy_result$has_SELE)
+## IL6
+table(sig_hardy_result$has_IL6)
+## Sig direction
+## SELE
+table(sig_hardy_result_no_brain$has_SELE, sig_hardy_result_no_brain$positive_o_neg)
+## IL6
+table(sig_hardy_result_no_brain$has_IL6, sig_hardy_result_no_brain$positive_o_neg)
+## Sig direction BRAIN
+## SELE
+table(sig_hardy_result_brain$has_SELE, sig_hardy_result_brain$positive_o_neg)
+## IL6
+table(sig_hardy_result_brain$has_IL6, sig_hardy_result_brain$positive_o_neg)
+```
