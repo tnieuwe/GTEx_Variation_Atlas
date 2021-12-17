@@ -71,7 +71,7 @@ ggplot(counted_dat, aes(n, generalized_cluster, fill = Certainty)) +
     xlim(0, 150) +
    # geom_text(aes(label=n), hjust=-.05, size=3.5)+
     theme_minimal() +
-    scale_fill_viridis(discrete = T) + 
+    scale_fill_viridis(option = "H", discrete = T) + 
     theme(legend.position = "top") +
     labs( y = "Cluster Type", x= "N of Clusters")
 
