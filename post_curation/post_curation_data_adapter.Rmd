@@ -1,0 +1,231 @@
+---
+title: "Post-curate Recreator"
+author: "Tim N"
+date: "12/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The purpose of this markdown is multifaceted, but the overall point is to update
+tissues where we have manually collapsed their clusters. Therefore there are 3
+sections of code required.
+
+1. Rename the clusters (just so its in alphabetical order again)
+2. Recreate Z-scores
+3. Recreate gene list
+4. Make new key dat
+
+Then I need to re-run all my analyses that use Z-scores, but that won't be
+done through this code.
+
+Load data and code I think will be required
+```{r}
+key_dat <- read.csv("../automated_cluster_analysis/data_out/key_table.csv")
+source("../global_in/general_scripts.R")
+source("../global_in/pipeline_specific_functions/mccall_analysis_corr_step.R")
+source("../global_in/pipeline_specific_functions/mccall_cluster_generator.R")
+source("../global_in/pipeline_specific_functions/sub_cluster_maker.R")
+source("../global_in/pipeline_specific_functions/mccall_profile_maker.R")
+source("../global_in/pipeline_specific_functions/unfiltered_heatmap.R")
+correlation_type = "kendall"
+library(tidyverse)
+require(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+library(SuppDists)
+library(reshape2)
+```
+
+
+
+Load in curated files and select what tissues will be re-analyzed
+```{r}
+old_manual_dat <- readxl::read_xlsx("../manual_cluster_analysis/manual_curation_12_17_21_ton.xlsx",
+                                    sheet = 2) %>%
+    separate(`GTEx label`, c("abbreviation", "cluster", "sub_num"), "[.]",remove = F)
+curated_dat <- filter(old_manual_dat, curated == 1)
+
+key_dat_cur <- select(key_dat, abrreviated, r_names, official_name) %>%
+    filter(abrreviated %in% curated_dat$abbreviation) %>%
+    unique()
+```
+
+Make a list that will store the changes for each tissue so we can do this via
+a for loop.
+
+```{r}
+curation_list <- list()
+```
+Fix letters
+```{r}
+new_manual_dat <- filter(old_manual_dat, !(abbreviation %in% key_dat_cur$abrreviated))
+to_rejoin <- NULL
+for (curated_ind in seq(nrow(key_dat_cur))) {
+    curated_row <- key_dat_cur[curated_ind,]
+    curated_rname <- curated_row$r_names
+    curated_abbreviation <- curated_row$abrreviated
+    current_dat <- old_manual_dat %>% filter(abbreviation %in% curated_abbreviation)
+    ## for loop renaming clusters
+    alpha_ind <- 1
+    cluster_vect <- current_dat$cluster
+    pair <- FALSE
+    new_cluster_vect <- current_dat$cluster
+    for (cluster_ind in seq((cluster_vect))) {
+        if (pair == TRUE | is.na(pair)) {
+            pair = FALSE
+            next()
+        }
+        ## Catch sub clusters
+        cur_letter <- cluster_vect[cluster_ind]
+        next_letter <- cluster_vect[cluster_ind + 1]
+        pair <- cur_letter == next_letter
+        pair <- if_else(is.na(pair), FALSE, pair)
+        ## Change lettering if needed
+        if (pair == TRUE) {
+            new_cluster_vect[cluster_ind:(cluster_ind + 1)] <- LETTERS[alpha_ind]
+            alpha_ind = alpha_ind + 1
+        } else{
+            new_cluster_vect[cluster_ind] <- LETTERS[alpha_ind]
+            alpha_ind = alpha_ind + 1
+        }
+        
+        
+    }
+    current_dat$cluster <- new_cluster_vect
+    to_rejoin <- rbind(to_rejoin, current_dat)
+}
+
+new_manual_dat <- rbind(new_manual_dat,to_rejoin) 
+```
+
+
+```{r}
+
+for (cur_key_ind in seq(nrow(key_dat_cur))) {
+    cur_row <- key_dat_cur[cur_key_ind,]
+    temp_manual_dat <- new_manual_dat %>% filter(abbreviation %in% cur_row$abrreviated)
+    ##### Run first half of analysis here
+    pipeline_dat_1 <- mccall_analysis_corr_step(cur_row$r_names,
+                                     path_to_files = "../Setup Code/output/",
+                                     variance_type = "quantile",
+                                     variance_value = .98,
+                                     correlation = correlation_type,
+                                     MARCC = FALSE)
+    pipeline_dat_2 <- mccall_cluster_generator(pipeline_dat_1,
+                                         cluster_breaker = TRUE,
+                                         sub_clust_cut_off = .8,
+                                         agglo_cut_off = .75)
+    ####
+    old_anno <- pipeline_dat$anno_df
+    new_anno <- pipeline_dat$anno_df
+    for (cluster_ind in seq(nrow(temp_manual_dat))) {
+        cur_clust_row <- temp_manual_dat[cluster_ind,]
+        cur_genes <- str_split(cur_clust_row$genes, ";")[[1]]
+        clust_ind <- rownames(old_anno) %in% cur_genes
+        new_anno[clust_ind,1] <- cur_clust_row$cluster
+    }
+    
+    new_anno$cluster <- factor(new_anno$cluster,
+                               levels =  c("",
+                                           LETTERS[1:length(unique(temp_manual_dat$cluster))]))
+    pipeline_dat_2$anno_df <- new_anno
+    pipeline_dat_2$cluster_names <- as.character(new_anno$cluster)
+    pipeline_dat_3 <- sub_cluster_maker(pipeline_dat_2)
+    pipeline_dat_4 <- mccall_profile_maker(pipeline_dat_3)
+    unfiltered_heatmap(pipeline_dat_4,
+                   save_file = paste0("new_heatmaps/curated_",
+                                      cur_row$r_names,
+                                      ".pdf"),
+                   row_col_font = 1.5) 
+    profiles_path <- paste0("new_zscores/",
+                        correlation_type, "-",cur_row$r_names,"-cluster-profiles.csv")
+gene_clust_path <- paste0("new_gene_lists/",
+                          correlation_type, "-",cur_row$r_names,"-gene-clusters-high-variance.csv")
+    write.csv(pipeline_dat_4[["sample_profiles"]], file=profiles_path, quote=FALSE)
+    write.csv(pipeline_dat_4[["cluster_genes"]], file = gene_clust_path,
+          row.names = FALSE)
+}
+
+```
+
+
+
+```{r}
+sub_cluster_maker <- function(clust_initial){
+    ### This function splits the clusters created by absolute values into two
+    ### seperate cluster eg. X-1 and X-2. This is to make the clusters more
+    ### informative. 
+    ## Load in the data
+    cnames <- clust_initial$cluster_names
+    anno <- clust_initial$anno_df
+    gcor <- clust_initial$correlation_matrix
+    vsdHighVar <- clust_initial[["high_var_genes"]]
+    ## Generate gclusts matrix, which includes the genes and their respective
+    ## clusters.
+    gclusts <- matrix("", nrow=max(table(cnames)), ncol=length(table(cnames)))
+    colnames(gclusts) <- levels(anno$cluster)
+    for(k in 1:length(table(cnames))){
+        tmp <- colnames(gclusts)[k]
+        cur_genes <- rownames(anno)[anno$cluster == tmp]
+        #gclusts[1:sum(cnames==tmp), k] <- rownames(gcor)[cnames==tmp]
+        gclusts[1:sum(cnames==tmp), k] <- cur_genes
+        
+    }
+    
+    ## Below code creates subclusters, splitting on the absolute values
+    for (column in LETTERS[1:(length(unique(cnames)) -1 )]) {
+        #Pull out the first column
+        test_col <- gclusts[,column]
+        first_gene <- test_col[1]
+        #Make an index to subset gcor to just a single clusters
+        ind <- which(rownames(gcor) %in% test_col)
+        sub_cor <- gcor[ind,ind]
+        #Test if the cluster has any negatively correlating genes
+        ## This doesn't work let me try a new method generating a new dendo
+        ind2 <- sub_cor[,first_gene] < 0
+        #If there are negatively correlating genes...
+        if (sum(ind2) > 0) {
+            dendo_sub <- hclust(d=as.dist(1-(sub_cor)), method = "average")
+            
+            ## clean up heatmap to focus on interesting gene clusters
+            sub_clusts <- cutree(dendo_sub,k = 2)
+            
+            #generate sub cluster 1
+            sub_1 <- names(sub_clusts)[sub_clusts == 1]
+            #Subcluster 2
+            sub_2 <- names(sub_clusts)[sub_clusts == 2]
+            #Remover old column to replace with new columns
+            gclusts <- as.matrix(gclusts[,!(colnames(gclusts) == column)])
+            #Make a single matrix of same rows as gclusts, one for each sub-cluster. 
+            matrix_1  <- as.matrix(c(sub_1 ,rep("", nrow(gclusts) - length(sub_1))), )
+            colnames(matrix_1) <- paste0(column,"-1")
+            matrix_2  <- as.matrix(c(sub_2 ,rep("", nrow(gclusts) - length(sub_2))), )
+            colnames(matrix_2) <- paste0(column,"-2")
+            #Add subclusters to gclusts
+            gclusts <-   cbind(gclusts, matrix_1, matrix_2)
+            
+        }
+        
+    }
+    
+    #Realphebatize columns for sake of beauty 
+    gclusts <- gclusts[,order(colnames(gclusts))]
+    
+    ## Stratify cluster inclusion
+    ind <- which(rownames(vsdHighVar) %in% rownames(anno)[anno$cluster != ""])
+    vsdHighVarClust <- clust_initial$high_var_genes[ind,]
+    vsdHighVarCenteredClust <- clust_initial$high_var_centered[ind,]
+    vsdHighVarNoise <- clust_initial$high_var_genes[-ind,]
+    
+    ## Return output to the input list
+    clust_initial[["cluster_genes"]] <- gclusts
+    clust_initial[["high_var_clusters"]] <- vsdHighVarClust
+    clust_initial[["high_var_clust_cent"]] <- vsdHighVarCenteredClust
+    clust_initial[["high_var_noise"]] <- vsdHighVarNoise
+    clust_initial
+}
+```
+
