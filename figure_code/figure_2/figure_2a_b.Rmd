@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 source("../../global_in/general_scripts.R")
-cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall_curated//")
 
 ```
 
