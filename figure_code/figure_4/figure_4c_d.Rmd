@@ -23,15 +23,52 @@ phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
         RACE == 98 ~ "Not Reported",
         RACE == 99 ~ "Unknown"
     ))
+
+tissue_list = c("lung",
+                "artery_coronary",
+                "kidney_cortex",
+                "skin_sun_exposed__lower_leg",
+                "prostate",
+                "brain_spinal_cord__cervical_c_1",
+                "brain_putamen__basal_ganglia",
+                "colon_sigmoid",
+                "whole_blood",
+                "adipose_subcutaneous",
+                "adipose_visceral__omentum",
+                "artery_aorta",
+                "artery_tibial",
+                "artery_coronary",
+                "breast_mammary_tissue",
+                "adrenal_gland",
+                "colon_transverse",
+                "minor_salivary_gland",
+                "skin_not_sun_exposed__suprapubic",
+                "nerve_tibial",
+                "liver",
+                "stomach",  
+                "small_intestine_terminal_ileum",
+                "heart_atrial_appendage",
+                "spleen",
+                "pancreas",
+                "pituitary",
+                "heart_left_ventricle",
+                "testis",
+                "esophagus_gastroesophageal_junction",
+                "esophagus_mucosa",
+                "esophagus_muscularis",
+                "ovary",
+                "uterus",
+                "vagina")
 ```
 
 
 ```{r}
 dat <- GenesFromTissues(tiss_of_int = "",
-                       genes_of_int = c("GSTM1", "MTND1P23"),
+                       genes_of_int = c("GSTM1", "MTND1P23", "C21orf33"),
                        vst_location = "../../Setup Code/output/",
-                       run_all_available = TRUE,
-                       key_dat = key_dat)
+                       run_all_available = T,
+                       key_dat = key_dat) %>%
+    filter(tissue %in% tissue_list)
 ```
 
 Start with adipose
@@ -40,7 +77,8 @@ Start with adipose
 all_dat <- left_join(dat, phen_dat) %>%
     filter(Race_Character != "Unknown") %>%
     mutate(above_GSTM_thresh = GSTM1 > 6.2,
-           above_MTND_thresh = MTND1P23 > 10)
+           above_MTND_thresh = MTND1P23 > 10,
+           above_C21_thresh = C21orf33 > 6.2,)
 
 
 gstm_table <- table(all_dat$above_GSTM_thresh, all_dat$Race_Character) %>%
@@ -102,3 +140,13 @@ ggplot(all_dat, aes(Race_Character, MTND1P23, color = Race_Character)) +
 ggsave("figure_out/figure_4d.pdf", height = 5, width = 6)
 
 ```
+
+Fisher's Exact
+```{r}
+mtnd_result <- fisher.test(all_dat$above_MTND_thresh, all_dat$Race_Character)
+mtnd_result$p.value
+
+c21_result <- fisher.test(all_dat$above_C21_thresh, all_dat$Race_Character)
+c21_result$p.value
+```
+
