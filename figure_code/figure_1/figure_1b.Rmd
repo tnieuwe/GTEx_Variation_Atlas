@@ -45,7 +45,7 @@ excel_filt <- excel_dat %>%
     `Certainty (High, medium, low)` =
         tools::toTitleCase(`Certainty (High, medium, low)`)
     ) %>%
-    filter(generalized_cluster != "X CLUST")
+    filter(generalized_cluster != "X CLUST") 
 
 excel_filt$generalized_cluster <- factor(excel_filt$generalized_cluster,
                                          levels = names(sort(table(excel_filt$generalized_cluster))))
@@ -57,7 +57,7 @@ counted_dat <- excel_filt %>% group_by(generalized_cluster,
                                        `Certainty (High, medium, low)`) %>% dplyr::count() %>%
     mutate(
     n = ifelse(generalized_cluster == "SEX", n/2, n)) %>%
-    rename(`Certainty (High, medium, low)` = "Certainty")
+    rename(Certainty = "Certainty (High, medium, low)")
 
 ## Reorder data
 
@@ -71,7 +71,7 @@ ggplot(counted_dat, aes(n, generalized_cluster, fill = Certainty)) +
     xlim(0, 150) +
    # geom_text(aes(label=n), hjust=-.05, size=3.5)+
     theme_minimal() +
-    scale_fill_viridis(option = "H", discrete = T) + 
+    scale_fill_viridis(option = "G", discrete = T) + 
     theme(legend.position = "top") +
     labs( y = "Cluster Type", x= "N of Clusters")
 
