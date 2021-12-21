@@ -28,17 +28,20 @@ muscle_prof <- ZscoreProfilePuller("muscle_skeletal",
     filter(!is.na(`Hardy Score`))
 ```
 
+This figure was dropped
 ```{r}
 ggplot(muscle_prof, aes(SMTSISCH, E.2, color = `Hardy Score`)) +
     geom_point()+
     theme_classic()+
     scale_color_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score")
-ggsave("figure_out/figure_3c_v1.pdf", height = 5, width = 6)
+#ggsave("figure_out/figure_3c_v1.pdf", height = 5, width = 6)
 ```
 
 ```{r}
 ggplot(muscle_prof, aes(`Hardy Score`, E.2, color = `Hardy Score`)) +
-    ggforce::geom_sina()+
+    ggforce::geom_sina() + 
+    stat_summary(fun = median, fun.min = median, fun.max = median,
+                 geom = "crossbar", width = 0.5, color = "red") +
     theme_classic()+
     theme(legend.position = "none") +
     scale_color_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score")
