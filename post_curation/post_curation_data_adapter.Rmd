@@ -136,6 +136,7 @@ for (cur_key_ind in seq(nrow(key_dat_cur))) {
                                            LETTERS[1:length(unique(temp_manual_dat$cluster))]))
     pipeline_dat_2$anno_df <- new_anno
     pipeline_dat_2$cluster_names <- as.character(new_anno$cluster)
+    pipeline_dat_2$clust_num <-nrow(unique(new_anno))
     pipeline_dat_3 <- sub_cluster_maker(pipeline_dat_2)
     pipeline_dat_4 <- mccall_profile_maker(pipeline_dat_3)
     unfiltered_heatmap(pipeline_dat_4,
