@@ -99,6 +99,9 @@ for (curated_ind in seq(nrow(key_dat_cur))) {
 }
 
 new_manual_dat <- rbind(new_manual_dat,to_rejoin) 
+
+new_manual_dat <- new_manual_dat %>% arrange((`GTEx label`))
+write.csv(new_manual_dat, "manual_post_curation.csv")
 ```
 
 
@@ -119,8 +122,8 @@ for (cur_key_ind in seq(nrow(key_dat_cur))) {
                                          sub_clust_cut_off = .8,
                                          agglo_cut_off = .75)
     ####
-    old_anno <- pipeline_dat$anno_df
-    new_anno <- pipeline_dat$anno_df
+    old_anno <- pipeline_dat_2$anno_df
+    new_anno <- pipeline_dat_2$anno_df
     for (cluster_ind in seq(nrow(temp_manual_dat))) {
         cur_clust_row <- temp_manual_dat[cluster_ind,]
         cur_genes <- str_split(cur_clust_row$genes, ";")[[1]]
@@ -154,6 +157,7 @@ gene_clust_path <- paste0("new_gene_lists/",
 
 
 ```{r}
+clust_initial <- pipeline_dat_2
 sub_cluster_maker <- function(clust_initial){
     ### This function splits the clusters created by absolute values into two
     ### seperate cluster eg. X-1 and X-2. This is to make the clusters more
@@ -162,6 +166,7 @@ sub_cluster_maker <- function(clust_initial){
     cnames <- clust_initial$cluster_names
     anno <- clust_initial$anno_df
     gcor <- clust_initial$correlation_matrix
+    high_var_centered <- clust_initial$high_var_centered
     vsdHighVar <- clust_initial[["high_var_genes"]]
     ## Generate gclusts matrix, which includes the genes and their respective
     ## clusters.
@@ -197,6 +202,13 @@ sub_cluster_maker <- function(clust_initial){
             sub_1 <- names(sub_clusts)[sub_clusts == 1]
             #Subcluster 2
             sub_2 <- names(sub_clusts)[sub_clusts == 2]
+            ### Triple Check by seeing if output pos or neg correlates
+            temp_z <- cbind(colMeans(high_var_centered[sub_1,,drop = F]),
+                            colMeans(high_var_centered[sub_2,,drop = F]))
+            do_they_correlate <- cor(temp_z)[1,2] > 0 
+            
+            ###
+            if (do_they_correlate == FALSE) {
             #Remover old column to replace with new columns
             gclusts <- as.matrix(gclusts[,!(colnames(gclusts) == column)])
             #Make a single matrix of same rows as gclusts, one for each sub-cluster. 
@@ -206,6 +218,8 @@ sub_cluster_maker <- function(clust_initial){
             colnames(matrix_2) <- paste0(column,"-2")
             #Add subclusters to gclusts
             gclusts <-   cbind(gclusts, matrix_1, matrix_2)
+            }
+            
             
         }
         
