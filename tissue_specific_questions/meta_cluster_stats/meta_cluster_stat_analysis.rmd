@@ -20,7 +20,7 @@ source("../../global_in/general_scripts.R")
 ```
 
 ```{r}
-cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall/")
+cluster_list <- AllGeneClusterPuller("../../MARCC output/variance_genes_kendall_curated/")
 manual_curation <- read.csv("../../manual_cluster_analysis/manual_curation.csv")
 key_dat <- read.csv("../../automated_cluster_analysis/data_out/key_table.csv")
 phen_dat <- read.csv("../../global_in/gtex_phenotypes_v8.csv") %>%
@@ -122,7 +122,7 @@ clusters_of_interest <- ClusterGeneOverlaps(marker_genes,cluster_list) %>%
 
 zscores_of_tiss <- ZscoreProfilePuller(
     r_name_vect = unique(clusters_of_interest$r_names),
-    "../../MARCC output/variance_profiles_kendall/")
+    "../../MARCC output/variance_profiles_kendall_curated/")
 
 ### Begin loop of data
 master_plot_list <- list()
