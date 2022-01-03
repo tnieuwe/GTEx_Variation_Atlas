@@ -108,6 +108,41 @@ ggplot(all_dat, aes(Race_Character, GSTM1, color = Race_Character)) +
     theme(legend.position = "none")
 ggsave("figure_out/figure_4c.pdf", height = 5, width = 6)
 ```
+Collapsed GSTM
+```{r}
+gstm_med <- all_dat %>% group_by(SUBJID) %>%
+    summarize(med_gstm1 = median(GSTM1)) %>%
+    mutate(above_GSTM_thresh = med_gstm1 > 6.2) %>%
+    left_join(phen_dat)
+
+gstm_table <- table(gstm_med$above_GSTM_thresh, gstm_med$Race_Character) %>%
+    as.data.frame()
+gstm_freqs <- gstm_table$Freq
+top = 13.2
+bot = 2.8
+
+
+ggplot(gstm_med, aes(Race_Character, med_gstm1, color = Race_Character)) +
+    geom_sina()+
+    annotate("text",
+             y = c(bot, top,
+                  bot, top,
+                  bot, top,
+                  bot, top),
+             x= c(1.2, 1.2,
+                  2.2, 2.2,
+                  3.2, 3.2,
+                  4.2, 4.2),
+             label = c(gstm_freqs[1], gstm_freqs[2],
+                       gstm_freqs[3], gstm_freqs[4],
+                       gstm_freqs[5],gstm_freqs[6],
+                       gstm_freqs[7],gstm_freqs[8])) +
+    scale_color_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    geom_hline(yintercept = 6.2) +
+    theme_bw() +
+    theme(legend.position = "none")
+ggsave("figure_out/figure_4c_v2.pdf", height = 5, width = 6)
+```
 
 
 ```{r}
@@ -141,12 +176,64 @@ ggsave("figure_out/figure_4d.pdf", height = 5, width = 6)
 
 ```
 
-Fisher's Exact
+```{r}
+med_mito <- all_dat %>% group_by(SUBJID) %>%
+    summarize(med_mt = median(MTND1P23)) %>%
+    mutate(above_MTND_thresh = med_mt > 10) %>%
+    left_join(phen_dat)
+
+
+mt_table <- table(med_mito$above_MTND_thresh, med_mito$Race_Character) %>%
+    as.data.frame()
+mt_freqs <- mt_table$Freq
+top = 17
+bot = 4
+
+ggplot(med_mito, aes(Race_Character, med_mt, color = Race_Character)) +
+    geom_sina()+
+    scale_color_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    geom_hline(yintercept = 10) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    annotate("text",
+             y = c(bot, top,
+                  bot, top,
+                  bot, top,
+                  bot, top),
+             x= c(1.2, 1.2,
+                  2.2, 2.2,
+                  3.2, 3.2,
+                  4.2, 4.2),
+             label = c(mt_freqs[1], mt_freqs[2],
+                       mt_freqs[3], mt_freqs[4],
+                       mt_freqs[5], mt_freqs[6],
+                       mt_freqs[7], mt_freqs[8]))
+
+ggsave("figure_out/figure_4d_v2.pdf", height = 5, width = 6)
+```
+
+
+Fisher's Exact V1
 ```{r}
 mtnd_result <- fisher.test(all_dat$above_MTND_thresh, all_dat$Race_Character)
 mtnd_result$p.value
 
 c21_result <- fisher.test(all_dat$above_C21_thresh, all_dat$Race_Character)
+c21_result$p.value
+```
+
+Fisher's Exact V2
+```{r}
+med_C21 <- all_dat %>% group_by(SUBJID) %>%
+    summarize(med_C21 = median(C21orf33)) %>%
+    mutate(above_C21_thresh = med_C21 > 6.2) %>%
+    left_join(phen_dat)
+
+
+mtnd_result <- fisher.test(med_mito$above_MTND_thresh, med_mito$Race_Character)
+mtnd_result$p.value
+
+c21_result <- fisher.test(med_C21$above_C21_thresh, med_C21$Race_Character)
 c21_result$p.value
 ```
 
