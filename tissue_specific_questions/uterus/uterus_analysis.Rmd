@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
 ```{r}
 library(DESeq2)
 library(tidyverse)
@@ -70,3 +71,36 @@ lm(`Mega-cluster Z-score` ~ age_quartile +SMTSISCH, data = joined_dat) %>%
     broom::tidy()
 ```
 
+MegaCluster correlations with A.1
+
+```{r}
+joined_dat_A <- left_join(uterus_profile$uterus, phen_dat) %>%
+    left_join(., samp_dat)
+
+menopause_quantiles<- quantile(joined_dat_A$AGE, c(.25, .75))
+
+young_uterus <- sum(joined_dat_A$AGE <= menopause_quantiles[1])
+older_uterus <-sum(joined_dat_A$AGE >= menopause_quantiles[2])
+nrow(joined_dat_A) - (young_uterus + older_uterus) 
+```
+
+```{r}
+joined_dat_A$`Mega-cluster Z-score` <- ClusterCombinerZscores("uterus",
+                                                            c("G", "M.1", "J.1", "A.1"),
+                                                            uterus_profile)
+
+joined_dat_A <- mutate(joined_dat_A, age_quartile = case_when(
+    AGE <= menopause_quantiles[1] ~ "bottom quartile",
+    AGE >= menopause_quantiles[2] ~ "top quartile")) %>%
+    filter(!is.na(age_quartile))
+
+ggplot(joined_dat_A, aes(age_quartile, `Mega-cluster Z-score`)) +
+    geom_boxplot(outlier.shape = NA) +
+    ggforce::geom_sina() +
+    theme_classic() +
+    labs(x = "Uterine Age Quartiles")
+ggsave("data_out/quartile_sina_boxplot_comparisons.pdf")
+
+lm(`Mega-cluster Z-score` ~ age_quartile +SMTSISCH, data = joined_dat_A) %>%
+    broom::tidy()
+```
