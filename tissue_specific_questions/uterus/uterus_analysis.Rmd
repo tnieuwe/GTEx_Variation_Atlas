@@ -30,7 +30,11 @@ all_cor_mat <- ClusterCombinerZscores("uterus",
 ## relationships
 dendo <- hclust(dist(1-abs(all_cor_mat)))
 pheatmap((all_cor_mat),cluster_cols = FALSE, cluster_rows = FALSE)
-pheatmap((all_cor_mat),cluster_cols = dendo, cluster_rows = dendo)
+supp_heatmap <- pheatmap((all_cor_mat),cluster_cols = dendo,
+                         cluster_rows = dendo,display_numbers = T)
+pdf("data_out/uterus_cluster_correlations.pdf", height = 7, width = 9)
+supp_heatmap
+dev.off()
 ```
 
 ```{r}
@@ -38,12 +42,31 @@ ClusterCombinerGenes("uterus", c("G", "M.1", "J.1"), cluster_list)
 ```
 
 ```{r}
-joined_dat <- left_join(uterus_profile$uterus, phen_dat)
+joined_dat <- left_join(uterus_profile$uterus, phen_dat) %>%
+    left_join(., samp_dat)
 
 menopause_quantiles<- quantile(joined_dat$AGE, c(.25, .75))
 
 young_uterus <- sum(joined_dat$AGE <= menopause_quantiles[1])
 older_uterus <-sum(joined_dat$AGE >= menopause_quantiles[2])
 nrow(joined_dat) - (young_uterus + older_uterus) 
+```
+MegaCluster correlations
+
+```{r}
+joined_dat$`Mega-cluster Z-score` <- ClusterCombinerZscores("uterus",
+                                                            c("G", "M.1", "J.1"),
+                                                            uterus_profile)
+
+joined_dat <- mutate(joined_dat, age_quartile = case_when(
+    AGE <= menopause_quantiles[1] ~ "bottom quartile",
+    AGE >= menopause_quantiles[2] ~ "top quartile")) %>%
+    filter(!is.na(age_quartile))
+
+ggplot(joined_dat, aes(age_quartile, `Mega-cluster Z-score`)) +
+    ggforce::geom_sina()
+
+lm(`Mega-cluster Z-score` ~ age_quartile +SMTSISCH, data = joined_dat) %>%
+    broom::tidy()
 ```
 
