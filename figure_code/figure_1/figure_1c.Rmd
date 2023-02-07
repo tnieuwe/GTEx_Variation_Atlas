@@ -26,8 +26,9 @@ pheno <- fread("../../global_in/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS
 
 Tissue for figure
 ```{r}
-tiss = "stomach"
-#tiss = "artery_coronary"
+#tiss = "stomach"
+## I used the artery in the actual figure, not sure why stoamach was commented out
+tiss = "artery_coronary"
 ```
 
 Find XIST cluster 
@@ -43,6 +44,7 @@ Pull profiles and join with phenotype
 ```{r}
 cur_profiles <- ZscoreProfilePuller(tiss, "../../MARCC output/variance_profiles_kendall/")[[1]]
 for_plot <- left_join(cur_profiles, pheno)
+table(for_plot$SEX)
 ```
 
 
