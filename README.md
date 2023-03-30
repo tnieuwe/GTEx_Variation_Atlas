@@ -11,11 +11,11 @@ see gtex_read_counts.gct last date modified in Setup Code/downloaded_input/gtex_
 was originally acquired through dbGAP on 2019-10-21
 + *GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt*: a file containing sample
 data on GTEx samples was last download 2019-9-30
-+ GTEx_Analysis_v8_Annotations_SubjectAttributesDS.txt*: A file containing subject
++ *GTEx_Analysis_v8_Annotations_SubjectAttributesDS.txt*: A file containing subject
 data on GTEx subjects was last downloaded 2019-8-26.
 
 
-## File descriptiojns
+## File descriptions
 
 *gen_script_gtex_v8_1*:
 1. Separates tissues readcount matrices from one another.
