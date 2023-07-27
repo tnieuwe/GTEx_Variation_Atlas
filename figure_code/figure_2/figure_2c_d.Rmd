@@ -99,3 +99,54 @@ plot_dat %>% filter(PLA2G2A == TRUE) %>%
 ggsave("figure_out/figure_2c.pdf", height = 4, width = 5)
 ```
 
+
+## 28-06-2023 update
+In response to reviewers we are recreating the above plots unbinned
+
+Update plot dat making Hardy ordinal
+```{r}
+update_plot_dat <- left_join(long_results_out, pheno) %>% mutate(
+    DTHHRDY_factor = factor(DTHHRDY, levels = c("1", "2", "3", "4", "0"))
+) %>%
+    filter(!is.na(DTHHRDY_factor))
+```
+
+SELE update
+```{r}
+update_plot_dat %>% filter(SELE == TRUE) %>%
+    ggplot(., aes(DTHHRDY_factor, zscore)) +
+    ##ggforce::geom_sina(aes(color = hardy_bin)) +
+   geom_violin(aes(fill = DTHHRDY_factor)) +
+    geom_boxplot(outlier.alpha = 1, width = .5, color = "grey40") +
+    theme_classic() +
+    scale_fill_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score") +
+    labs(y = "SELE Cluster Z-scores")
+
+ggsave("figure_out/figure_2d_updated.pdf", height = 4, width = 5)
+```
+
+PLA2g2a
+```{r}
+update_plot_dat %>% filter(PLA2G2A == TRUE) %>%
+    ggplot(., aes(DTHHRDY_factor, zscore)) +
+    geom_violin(aes(fill = DTHHRDY_factor)) +
+    geom_boxplot(outlier.alpha = 1, width = .5, color = "grey40") +
+    theme_classic() +
+    scale_fill_viridis(option = "C", discrete = T,end = .90, name = "Hardy Score") +
+    labs(y = "PLA2G2A Cluster Z-scores")
+ggsave("figure_out/figure_2c_updated.pdf", height = 4, width = 5)
+```
+
+Statistics for SELE
+```{r}
+SELE_dat <- update_plot_dat %>% filter(SELE == TRUE) 
+
+lm(formula = zscore ~ DTHHRDY_factor, data = SELE_dat) %>% summary() %>% broom::tidy()
+```
+
+Statistics for SELE
+```{r}
+PLAG2A_dat <- update_plot_dat %>% filter(PLA2G2A == TRUE) 
+
+lm(formula = zscore ~ DTHHRDY_factor, data = PLAG2A_dat) %>% summary() %>% broom::tidy()
+```

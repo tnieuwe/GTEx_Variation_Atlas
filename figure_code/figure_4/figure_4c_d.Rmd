@@ -123,7 +123,7 @@ bot = 2.8
 
 
 ggplot(gstm_med, aes(Race_Character, med_gstm1, color = Race_Character)) +
-    geom_sina()+
+    ggforce::geom_sina()+
     annotate("text",
              y = c(bot, top,
                   bot, top,
@@ -235,5 +235,63 @@ mtnd_result$p.value
 
 c21_result <- fisher.test(med_C21$above_C21_thresh, med_C21$Race_Character)
 c21_result$p.value
+```
+
+
+## Update 28-06-23
+Reviewers requested a change in the plotting to a histogram and to use all samples, even if they're from the same patient
+
+```{r}
+ggplot(all_dat, aes(Race_Character, GSTM1, color = Race_Character)) +
+    ggforce::geom_sina() +
+    annotate("text",
+             y = c(bot, top,
+                  bot, top,
+                  bot, top,
+                  bot, top),
+             x= c(1.2, 1.2,
+                  2.2, 2.2,
+                  3.2, 3.2,
+                  4.2, 4.2),
+             label = c(gstm_freqs[1], gstm_freqs[2],
+                       gstm_freqs[3], gstm_freqs[4],
+                       gstm_freqs[5],gstm_freqs[6],
+                       gstm_freqs[7],gstm_freqs[8])) +
+    scale_color_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    geom_hline(yintercept = 6.2) +
+    theme_bw() +
+    theme(legend.position = "none")
+
+ggplot(all_dat, aes(GSTM1, fill = Race_Character)) +
+    geom_density() +
+    coord_flip() +
+    scale_fill_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    facet_wrap(~Race_Character, nrow = 1)
+ggsave(filename = "figure_out/figure_4c_density_flip.pdf", height = 5, width = 6.5)
+
+
+ggplot(all_dat, aes(GSTM1, fill = Race_Character)) +
+    geom_density() +
+    scale_fill_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    facet_wrap(~Race_Character, ncol = 1)
+ggsave(filename = "figure_out/figure_4c_density.pdf", height = 7, width = 5)
+```
+
+```{r}
+ggplot(all_dat, aes(MTND1P23, fill = Race_Character)) +
+    geom_density() +
+    scale_fill_manual(values=c("#a9449a", "#33b449", "#015794", "#c72827")) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    facet_wrap(~Race_Character, ncol = 1)
+ggsave(filename = "figure_out/figure_4d_density.pdf", height = 7, width = 5)
+
+```
+```{r}
+table(all_dat$Race_Character)
 ```
 
