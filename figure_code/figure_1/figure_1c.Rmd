@@ -61,3 +61,8 @@ ggsave("figures_out/figure_1c.pdf", height =5, width = 2)
 #ggsave("figures_out/figure_1c_coronary.pdf", height =5, width = 2)
 ```
 
+Statistics
+```{r}
+summary((lm(as.formula(paste0(xist_clust_string, "~", "SEX")), data = for_plot))) %>% broom::tidy()
+```
+

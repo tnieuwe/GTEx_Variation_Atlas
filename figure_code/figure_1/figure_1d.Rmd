@@ -61,3 +61,14 @@ ggplot(blood_dat) +
 ggsave("figures_out/figure_1d.pdf", height =5, width = 5)
 ```
 
+Statistics
+```{r}
+full_ischemic_blood_model <- lm(formula = blood_score ~ SMTSISCH + DTHHRDY_factor, data = blood_dat) %>%
+    summary() %>% broom::tidy()
+write.csv(full_ischemic_blood_model, file = "fig_1_d_ischemic_statistics.csv",quote = FALSE,row.names = FALSE)
+
+
+lm(formula = blood_score ~ SMTSISCH , data = blood_dat) %>%
+    summary()
+```
+
