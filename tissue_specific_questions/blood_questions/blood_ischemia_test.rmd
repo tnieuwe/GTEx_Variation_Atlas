@@ -140,3 +140,82 @@ tidy_blood <- broom.mixed::tidy(mixed_blood_model)
 write.csv(tidy_blood, "data_out/tidy_ischemic_blood_model.csv")
 ```
 
+Hemoglobin Clusters
+Adapted from SELE analysis
+```{r}
+phen_dat <- mutate(phen_dat,
+                   DTHHRDY_factor = factor(DTHHRDY, levels = c(1,2,3,4,0)),
+                   DTHHRDY_ordinal = factor(DTHHRDY, levels = c(1,2,3,4,0),ordered = T))
+
+marker_genes <- c("HBB", "HBA1", "HBA2", "HBD")
+clusters_of_interest <- ClusterGeneOverlaps(marker_genes,cluster_list) %>%
+    rownames_to_column("cluster") %>%
+    ## remove x cluster
+    filter(!str_detect(cluster, "X")) %>%
+    separate(., "cluster",into = c("r_names", "cluster"),sep = "-") %>%
+    left_join(., key_dat)
+
+zscores_of_tiss <- ZscoreProfilePuller(
+    r_name_vect = unique(clusters_of_interest$r_names),
+    "../../MARCC output/variance_profiles_kendall_curated/")
+
+### Begin loop of data
+master_plot_list <- list()
+full_results <- list()
+analysis_out <- NULL
+for (clust_ind in seq(nrow(clusters_of_interest))) {
+    cur_clust <- clusters_of_interest[clust_ind,]
+    temp_df <- zscores_of_tiss[[cur_clust$r_names]][,
+                                                    c("SUBJID",
+                                                      "SAMPID",
+                                                      cur_clust$cluster)]
+    temp_df <- left_join(temp_df, phen_dat, by = "SUBJID") %>%
+        left_join(., samp_dat, by = "SAMPID")
+    
+    ### Plotting data
+    isch_plot <- ggplot(temp_df, aes_string(x = "SMTSISCH",
+                               y = cur_clust$cluster,
+                               color = "DTHHRDY_factor")) +
+        geom_point() +
+        scale_color_viridis(option = "C", discrete = T,end = .90) +
+        theme_classic() +
+        labs(title = cur_clust$r_names, subtitle = cur_clust$found_genes)
+    hardy_plot <- ggplot(temp_df, aes_string(x = "DTHHRDY_factor",
+                               y = cur_clust$cluster,
+                               color = "DTHHRDY_factor")) +
+        geom_sina() +
+        scale_color_viridis(option = "C", discrete = T,end = .90) +
+        theme_classic() #+
+        #labs(title = cur_clust$r_names, subtitle = cur_clust$found_genes)
+    ## Joining plots
+    patch_plot <- isch_plot / hardy_plot +
+        plot_layout(guides = "collect") & theme(legend.position = "right")
+    master_plot_list[[paste0(cur_clust$r_names,"_",cur_clust$cluster)]] <-
+        patch_plot
+    ### Statistical analysis
+    temp_formula <- paste0(cur_clust$cluster,
+                           " ~ DTHHRDY_ordinal + SMTSISCH + AGE + SEX + SMGEBTCH")
+    tidy_res <- lm(as.formula(temp_formula),data = temp_df) %>% broom::tidy()
+    tidy_res$tissue <- cur_clust$r_names
+    tidy_res$cluster <- cur_clust$cluster
+    tidy_res$genes <- cur_clust$found_genes
+    ## Save all data in list
+    full_results[[paste0(cur_clust$r_names,"_",cur_clust$cluster)]] <- tidy_res
+    ## Filter data for p-value correction on ischemic time and hardy
+    ## the variables we care about. Also remove blood only because that is jsut
+    ## a positive control
+    tidy_filt <- tidy_res %>% filter(grepl("factor|SMTSISCH|ordinal.L",
+                                           x = term), genes != "HBB")
+    analysis_out <- rbind(analysis_out, tidy_filt)
+}
+
+
+## Correct for multiple correction
+analysis_out <- mutate(analysis_out,
+                       p_adj = p.adjust(p.value, method = "fdr"),
+                       is_sig = p_adj < 0.05,
+                       positive_o_neg = ifelse(estimate > 0,
+                                               "positive",
+                                               "negative"))
+```
+
