@@ -49,6 +49,9 @@ b1_plot <- ggplot(joined_dat, aes(blood_draw_time, B.1)) +
 plots <- b1_plot + b2_plot + patchwork::plot_annotation("B Cluster Compared to Pre or Post Mortem Blood Draws")
 
 plots
+pdf(file = "data_out/20230206_pre_v_post_mortem_blood_draw_cluster_B.pdf", height = 7, width = 9)
+plots
+dev.off()
 ```
 
 ```{r}
@@ -57,5 +60,10 @@ ggplot(joined_dat, aes(SMRIN, A, color = factor(DTHHRDY))) +
     theme_classic()
 
 lm(A ~ SMRIN, joined_dat) %>% summary()
+```
+
+```{r}
+wilcox.test(B.1~ blood_draw_time, data = joined_dat)$p.value
+wilcox.test(B.2~ blood_draw_time, data = joined_dat)$p.value
 ```
 
